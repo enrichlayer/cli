@@ -1,7 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { apiKeyCredentials } from "../build/auth/api-key.js";
 import { createV3Client } from "../build/client.js";
 import { USER_AGENT } from "../build/config.js";
@@ -51,3 +53,27 @@ export function testClient(baseUrl, overrides = {}) {
 }
 
 export const headers = (creditCost, requestId) => ({ "X-EnrichLayer-Credit-Cost": String(creditCost), "X-Request-Id": requestId });
+
+const CLI_PATH = fileURLToPath(new URL("../build/cli.js", import.meta.url));
+
+export function startCli(args, { env = {} } = {}) {
+  const cliHome = mkdtempSync(join(tmpdir(), "enrichlayer-cli-home-"));
+  const child = spawn(process.execPath, [CLI_PATH, ...args], {
+    env: { PATH: process.env.PATH, HOME: cliHome, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const done = new Promise((resolve) =>
+    child.on("close", (code) => {
+      const homeEntries = readdirSync(cliHome);
+      rmSync(cliHome, { recursive: true, force: true });
+      resolve({ code, stdout, stderr, homeEntries });
+    }),
+  );
+  return { child, done };
+}
+
+export const runCli = (args, options) => startCli(args, options).done;
