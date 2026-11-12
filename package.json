@@ -1,0 +1,26 @@
+{
+  "name": "@enrichlayer/cli-v3",
+  "version": "0.1.0",
+  "description": "Command-line client for the Enrich Layer v3 API — person and company profiles, company search and logos, work email search and email validation",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "update-spec": "node scripts/update-spec.mjs",
+    "gen:params": "node scripts/generate-params.mjs",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "author": "Enrich Layer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enrichlayer/cli.git"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=20.3"
+  }
+}
