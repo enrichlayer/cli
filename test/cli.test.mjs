@@ -1,6 +1,9 @@
 import { headers, runCli, startApi, startCli } from "./helpers.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const { version: VERSION } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 const PERSON = { fullName: "Jane Example", experience: { work: [] } };
 const SAVED_COPY =
@@ -165,7 +168,7 @@ test("--dry-run prints the request the call would send, sends nothing and hides 
     dryRun: true,
     method: "GET",
     url: `${api.url}/v3/person?profile=https%3A%2F%2Fwww.linkedin.com%2Fin%2Fjane%2F&workEmail=include`,
-    headers: { Authorization: "Bearer <ENRICHLAYER_API_KEY>", Accept: "application/json", "User-Agent": "enrichlayer-cli-v3/0.1.0" },
+    headers: { Authorization: "Bearer <ENRICHLAYER_API_KEY>", Accept: "application/json", "User-Agent": `enrichlayer-cli-v3/${VERSION}` },
   });
   assert.equal(dryRun.code, 0);
   assert.equal(dryRun.stderr, "");
@@ -226,7 +229,7 @@ test("--help and --version exit with 0; no command shows the help and exits with
   const none = await runCli([]);
 
   assert.deepEqual([help.code, help.stderr], [0, ""]);
-  assert.deepEqual([version.code, version.stdout], [0, "0.1.0\n"]);
+  assert.deepEqual([version.code, version.stdout], [0, `${VERSION}\n`]);
   assert.deepEqual([none.code, none.stdout, none.stderr], [2, "", help.stdout]);
 });
 
