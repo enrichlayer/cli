@@ -83,7 +83,14 @@ export function optionFor(path: string, param: V3Param): Option {
   throw new Error(`${path} ${param.name}: unsupported parameter type ${param.type}`);
 }
 
-export function buildProgram(onRun: (run: CommandRun) => Promise<void>): Command {
+export type AuthAction = "save" | "status" | "remove";
+
+export interface Handlers {
+  run: (run: CommandRun) => Promise<void>;
+  auth: (action: AuthAction) => Promise<void>;
+}
+
+export function buildProgram({ run: onRun, auth: onAuth }: Handlers): Command {
   const program = new Command("enrichlayer-v3")
     .description(DESCRIPTION)
     .version(VERSION)
@@ -104,7 +111,7 @@ export function buildProgram(onRun: (run: CommandRun) => Promise<void>): Command
     command
       .addOption(new Option("--format <name>", "Output format: json (default), table, csv, yaml or jsonl.").choices(FORMATS))
       .addOption(new Option("--fields <paths>", FIELDS_HELP).argParser(parseFields))
-      .option("--api-key <key>", "API key; without it, ENRICHLAYER_API_KEY is used")
+      .option("--api-key <key>", "API key; without it, ENRICHLAYER_API_KEY or the key file is used")
       .option("--dry-run", "Print the request instead of sending it; nothing is charged")
       .action(async (options: Record<string, unknown>) => {
         const given: Record<string, string | number> = {};
@@ -122,5 +129,10 @@ export function buildProgram(onRun: (run: CommandRun) => Promise<void>): Command
         });
       });
   }
+
+  const auth = program.command("auth").description("Save, check or remove the API key in the key file.");
+  auth.command("save").description("Save the API key from stdin to the key file.").action(() => onAuth("save"));
+  auth.command("status").description("Show which API key is in use and where the key file is.").action(() => onAuth("status"));
+  auth.command("remove").description("Remove the key file.").action(() => onAuth("remove"));
   return program;
 }

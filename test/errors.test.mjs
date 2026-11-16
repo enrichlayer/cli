@@ -197,7 +197,7 @@ test("an unreachable host asks to check the network and ENRICHLAYER_API_BASE_URL
 
 test("no key and a key with bad characters exit with the key code", async () => {
   assert.deepEqual(await failureFor({ body: {} }, { credentials: apiKeyCredentials({ env: {} }) }), {
-    message: "No API key. Set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.",
+    message: "No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.",
     exitCode: 3,
   });
   assert.deepEqual(await failureFor({ body: {} }, { credentials: apiKeyCredentials({ flag: "bad key" }) }), {

@@ -1,4 +1,4 @@
-import { DASHBOARD_URL, InvalidApiKeyError, type KeySource, MissingApiKeyError } from "./auth/api-key.js";
+import { DASHBOARD_URL, InvalidApiKeyError, KeyFileError, type KeySource, MissingApiKeyError } from "./auth/api-key.js";
 import { V3ApiError, V3InterruptedError, V3NetworkError, V3TimeoutError } from "./client.js";
 
 const DAY_SECONDS = 86_400;
@@ -103,7 +103,7 @@ export function describeFailure(error: unknown, { keySource, hasMaxAgeSeconds }:
       message: `${error.message}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.`,
       exitCode: EXIT_CODES.notNow,
     };
-  if (error instanceof MissingApiKeyError || error instanceof InvalidApiKeyError)
+  if (error instanceof MissingApiKeyError || error instanceof InvalidApiKeyError || error instanceof KeyFileError)
     return { message: error.message, exitCode: EXIT_CODES.key };
   return { message: error instanceof Error ? error.message : String(error), exitCode: EXIT_CODES.unexpected };
 }

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 const PERSON = { fullName: "Jane Example", experience: { work: [] } };
 const SAVED_COPY =
   "The call may still be charged. To get the copy that was saved in the meantime, run the same command without --max-age-seconds; do not repeat a live lookup right away.";
-const NO_KEY = "error: No API key. Set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.\n";
+const NO_KEY = "error: No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.\n";
 
 async function withApi(t, respond = () => ({ body: PERSON, headers: headers(1, "req-1") })) {
   const api = await startApi(respond);
@@ -191,7 +191,7 @@ test("Ctrl-C stops waiting, exits with 130 and warns that the call may be charge
   });
 
   const cli = startCli(["person", "--profile", "jane", "--max-age-seconds", "0"], { env });
-  await arrival;
+  await Promise.race([arrival, cli.done]);
   cli.child.kill("SIGINT");
   const result = await cli.done;
 

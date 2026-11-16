@@ -1,3 +1,4 @@
+import "./home.mjs";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
@@ -7,13 +8,6 @@ import { fileURLToPath } from "node:url";
 import { apiKeyCredentials } from "../build/auth/api-key.js";
 import { createV3Client } from "../build/client.js";
 import { USER_AGENT } from "../build/config.js";
-
-const home = mkdtempSync(join(tmpdir(), "enrichlayer-cli-test-"));
-process.env.HOME = home;
-process.env.USERPROFILE = home;
-delete process.env.XDG_CONFIG_HOME;
-for (const name of Object.keys(process.env)) if (name.startsWith("ENRICHLAYER_")) delete process.env[name];
-process.on("exit", () => rmSync(home, { recursive: true, force: true }));
 
 export async function startApi(respond) {
   const requests = [];
@@ -54,14 +48,24 @@ export function testClient(baseUrl, overrides = {}) {
 
 export const headers = (creditCost, requestId) => ({ "X-EnrichLayer-Credit-Cost": String(creditCost), "X-Request-Id": requestId });
 
+export function tempDir(t, prefix = "enrichlayer-cli-dir-") {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  return directory;
+}
+
 const CLI_PATH = fileURLToPath(new URL("../build/cli.js", import.meta.url));
 
-export function startCli(args, { env = {} } = {}) {
-  const cliHome = mkdtempSync(join(tmpdir(), "enrichlayer-cli-home-"));
-  const child = spawn(process.execPath, [CLI_PATH, ...args], {
-    env: { PATH: process.env.PATH, HOME: cliHome, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+export function startCli(args, { env = {}, input, home, xdg } = {}) {
+  const ownHome = home === undefined;
+  const cliHome = home ?? mkdtempSync(join(tmpdir(), "enrichlayer-cli-home-"));
+  const ownXdg = xdg === undefined;
+  const cliXdg = ownXdg ? mkdtempSync(join(tmpdir(), "enrichlayer-cli-xdg-")) : xdg;
+  const childEnv = Object.fromEntries(
+    Object.entries({ PATH: process.env.PATH, HOME: cliHome, XDG_CONFIG_HOME: cliXdg ?? undefined, ...env }).filter(([, value]) => value !== undefined),
+  );
+  const child = spawn(process.execPath, [CLI_PATH, ...args], { env: childEnv, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+  if (input !== undefined) child.stdin.end(input);
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -69,7 +73,8 @@ export function startCli(args, { env = {} } = {}) {
   const done = new Promise((resolve) =>
     child.on("close", (code) => {
       const homeEntries = readdirSync(cliHome);
-      rmSync(cliHome, { recursive: true, force: true });
+      if (ownHome) rmSync(cliHome, { recursive: true, force: true });
+      if (ownXdg) rmSync(cliXdg, { recursive: true, force: true });
       resolve({ code, stdout, stderr, homeEntries });
     }),
   );
