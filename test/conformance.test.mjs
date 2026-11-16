@@ -7,7 +7,7 @@ import { readSpec } from "../scripts/spec-files.mjs";
 
 const spec = await readSpec();
 const program = buildProgram(async () => {});
-const COMMON_FLAGS = ["--api-key", "--dry-run"];
+const COMMON_FLAGS = ["--format", "--fields", "--api-key", "--dry-run"];
 
 const FEWEST_FLAGS = {
   "/v3/person": ["--profile", "jane"],

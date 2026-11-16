@@ -230,3 +230,83 @@ test("--help and --version exit with 0; no command shows the help and exits with
   assert.deepEqual([version.code, version.stdout], [0, "0.1.0\n"]);
   assert.deepEqual([none.code, none.stdout, none.stderr], [2, "", help.stdout]);
 });
+
+const COMPANIES = [
+  { companyName: "Acme", domain: { resolved: "acme.com" }, employeeCount: 12 },
+  { companyName: "Initech", domain: { resolved: "initech.com" }, employeeCount: 300 },
+];
+
+test("--format csv prints the rows to stdout and the cost to stderr", async (t) => {
+  const { env } = await withApi(t, () => ({ body: COMPANIES, headers: headers(0, "req-csv") }));
+
+  const result = await runCli(["company-search", "--q", "acme", "--format", "csv"], { env });
+
+  assert.deepEqual(
+    { code: result.code, stdout: result.stdout, stderr: result.stderr },
+    {
+      code: 0,
+      stdout: "companyName,domain.resolved,employeeCount\r\nAcme,acme.com,12\r\nInitech,initech.com,300\r\n",
+      stderr: "credits charged: 0, request id: req-csv\n",
+    },
+  );
+});
+
+test("--format table names the lists it leaves out, and --fields shows them", async (t) => {
+  const person = { fullName: "Jane Example", education: [{ school: "MIT" }, { school: "Stanford" }] };
+  const { env } = await withApi(t, () => ({ body: person, headers: headers(1, "req-table") }));
+
+  const plain = await runCli(["person", "--profile", "jane", "--format", "table"], { env });
+  const picked = await runCli(["person", "--profile", "jane", "--format=table", "--fields", "fullName,education"], { env });
+
+  assert.deepEqual([plain.code, plain.stdout, plain.stderr], [
+    0,
+    "fullName  Jane Example\n",
+    "Lists left out: education (2 items); name them in --fields to show them.\ncredits charged: 1, request id: req-table\n",
+  ]);
+  assert.deepEqual([picked.code, picked.stdout, picked.stderr], [
+    0,
+    "fullName            Jane Example\neducation.0.school  MIT\neducation.1.school  Stanford\n",
+    "credits charged: 1, request id: req-table\n",
+  ]);
+});
+
+test("--format yaml and jsonl carry the answer, the cost and the request id on stdout", async (t) => {
+  const { env } = await withApi(t, () => ({ body: { fullName: "Jane" }, headers: headers(1, "req-y") }));
+
+  const yaml = await runCli(["person", "--profile", "jane", "--format", "yaml"], { env });
+  const jsonl = await runCli(["person", "--profile", "jane", "--format", "jsonl"], { env });
+
+  assert.deepEqual([yaml.code, yaml.stdout, yaml.stderr], [0, 'data:\n  fullName: "Jane"\ncreditCost: 1\nrequestId: "req-y"\n', ""]);
+  assert.deepEqual([jsonl.code, jsonl.stdout, jsonl.stderr], [0, '{"data":{"fullName":"Jane"},"creditCost":1,"requestId":"req-y"}\n', ""]);
+});
+
+test("--fields outside table and csv, a malformed --fields and an unknown format exit with 2 before any request", async (t) => {
+  const { api, env } = await withApi(t);
+  const cases = [
+    [["--fields", "fullName"], "error: --fields works with --format table or csv; json, yaml and jsonl print the whole answer.\n"],
+    [["--format", "yaml", "--fields", "fullName"], "error: --fields works with --format table or csv; json, yaml and jsonl print the whole answer.\n"],
+    [
+      ["--format", "csv", "--fields", "fullName,,headline"],
+      "error: option '--fields <paths>' argument 'fullName,,headline' is invalid. Expected comma-separated field paths, for example fullName,location.city.\n",
+    ],
+    [["--format", "csv", "--fields", "location..city"], "error: option '--fields <paths>' argument 'location..city' is invalid. Expected comma-separated field paths, for example fullName,location.city.\n"],
+    [["--format", "xml"], "error: option '--format <name>' argument 'xml' is invalid. Allowed choices are json, table, csv, yaml, jsonl.\n"],
+  ];
+
+  for (const [extra, stderr] of cases) {
+    const result = await runCli(["person", "--profile", "jane", ...extra], { env });
+
+    assert.deepEqual({ code: result.code, stdout: result.stdout, stderr: result.stderr }, { code: 2, stdout: "", stderr }, extra.join(" "));
+  }
+  assert.equal(api.requests.length, 0);
+});
+
+test("--dry-run prints the request as JSON whatever the format", async (t) => {
+  const { api, env } = await withApi(t);
+
+  const result = await runCli(["company-search", "--q", "acme", "--format", "csv", "--fields", "companyName", "--dry-run"], { env });
+
+  assert.equal(result.code, 0);
+  assert.equal(JSON.parse(result.stdout).url, `${api.url}/v3/company/search?q=acme`);
+  assert.equal(api.requests.length, 0);
+});

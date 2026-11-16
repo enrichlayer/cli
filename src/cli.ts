@@ -5,7 +5,10 @@ import { createV3Client, requestUrl } from "./client.js";
 import { apiBaseUrl, REQUEST_TIMEOUT_MS, RETRY_DELAYS_MS, USER_AGENT } from "./config.js";
 import { cutOffAdvice, describeFailure, EXIT_CODES } from "./errors.js";
 import { v3Params } from "./generated/v3-params.js";
+import { render } from "./output.js";
 import { buildProgram, type CommandRun, splitAssignments } from "./program.js";
+
+const FIELDS_FORMATS = ["table", "csv"];
 
 const INDICATOR_DELAY_MS = 2_000;
 
@@ -37,9 +40,11 @@ function startIndicator(started: number): () => void {
   };
 }
 
-async function run({ def, params, apiKey, dryRun }: CommandRun): Promise<void> {
+async function run({ def, params, apiKey, dryRun, format, fields }: CommandRun): Promise<void> {
   const problem = def.checkParams?.(params);
   if (problem) return fail(problem, EXIT_CODES.usage);
+  if (fields && !FIELDS_FORMATS.includes(format))
+    return fail("--fields works with --format table or csv; json, yaml and jsonl print the whole answer.", EXIT_CODES.usage);
 
   const credentials = apiKeyCredentials({ flag: apiKey });
   const hasMaxAgeSeconds = v3Params[def.path].some((param) => param.name === "maxAgeSeconds");
@@ -70,7 +75,9 @@ async function run({ def, params, apiKey, dryRun }: CommandRun): Promise<void> {
   try {
     const result = await callV3({ path: def.path, params, signal: controller.signal });
     stopIndicator();
-    printJson(result);
+    const rendered = render({ result, format, fields, rowsPath: def.rows, isTerminal: process.stdout.isTTY === true });
+    process.stdout.write(rendered.stdout);
+    for (const note of rendered.notes) process.stderr.write(`${note}\n`);
   } catch (error) {
     stopIndicator();
     if (controller.signal.aborted)
