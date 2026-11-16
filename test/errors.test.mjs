@@ -186,14 +186,11 @@ test("a timeout may be charged; without --max-age-seconds the advice is short", 
 });
 
 test("an unreachable host asks to check the network and ENRICHLAYER_API_BASE_URL", async () => {
-  const closed = await startApi(() => ({ body: {} }));
-  await closed.close();
-  const host = new URL(closed.url).host;
-
-  const failure = await failureFor({ body: {} }, { baseUrl: closed.url });
+  const failure = await failureFor({ body: {} }, { baseUrl: "http://127.0.0.1:2" });
 
   assert.deepEqual(failure, {
-    message: `Could not reach Enrich Layer at ${closed.url}: connect ECONNREFUSED ${host}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.`,
+    message:
+      "Could not reach Enrich Layer at http://127.0.0.1:2: connect ECONNREFUSED 127.0.0.1:2. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.",
     exitCode: 5,
   });
 });

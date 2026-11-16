@@ -73,15 +73,14 @@ test("an API error goes to stderr as one line with its exit code, and stdout sta
 });
 
 test("an unreachable host exits with 5", async () => {
-  const closed = await startApi(() => ({ body: {} }));
-  await closed.close();
-
-  const result = await runCli(["company-search", "--q", "acme"], { env: { ENRICHLAYER_API_KEY: "test-key", ENRICHLAYER_API_BASE_URL: closed.url } });
+  const result = await runCli(["company-search", "--q", "acme"], {
+    env: { ENRICHLAYER_API_KEY: "test-key", ENRICHLAYER_API_BASE_URL: "http://127.0.0.1:2" },
+  });
 
   assert.equal(result.code, 5);
   assert.equal(
     result.stderr,
-    `error: Could not reach Enrich Layer at ${closed.url}: connect ECONNREFUSED ${new URL(closed.url).host}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.\n`,
+    "error: Could not reach Enrich Layer at http://127.0.0.1:2: connect ECONNREFUSED 127.0.0.1:2. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.\n",
   );
 });
 
