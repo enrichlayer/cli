@@ -1,11 +1,14 @@
 import { headers, runCli, startApi, startCli } from "./helpers.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const { version: VERSION } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 const PERSON = { fullName: "Jane Example", experience: { work: [] } };
 const SAVED_COPY =
   "The call may still be charged. To get the copy that was saved in the meantime, run the same command without --max-age-seconds; do not repeat a live lookup right away.";
-const NO_KEY = "error: No API key. Set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.\n";
+const NO_KEY = "error: No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.\n";
 
 async function withApi(t, respond = () => ({ body: PERSON, headers: headers(1, "req-1") })) {
   const api = await startApi(respond);
@@ -73,15 +76,14 @@ test("an API error goes to stderr as one line with its exit code, and stdout sta
 });
 
 test("an unreachable host exits with 5", async () => {
-  const closed = await startApi(() => ({ body: {} }));
-  await closed.close();
-
-  const result = await runCli(["company-search", "--q", "acme"], { env: { ENRICHLAYER_API_KEY: "test-key", ENRICHLAYER_API_BASE_URL: closed.url } });
+  const result = await runCli(["company-search", "--q", "acme"], {
+    env: { ENRICHLAYER_API_KEY: "test-key", ENRICHLAYER_API_BASE_URL: "http://127.0.0.1:2" },
+  });
 
   assert.equal(result.code, 5);
   assert.equal(
     result.stderr,
-    `error: Could not reach Enrich Layer at ${closed.url}: connect ECONNREFUSED ${new URL(closed.url).host}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.\n`,
+    "error: Could not reach Enrich Layer at http://127.0.0.1:2: connect ECONNREFUSED 127.0.0.1:2. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.\n",
   );
 });
 
@@ -166,7 +168,7 @@ test("--dry-run prints the request the call would send, sends nothing and hides 
     dryRun: true,
     method: "GET",
     url: `${api.url}/v3/person?profile=https%3A%2F%2Fwww.linkedin.com%2Fin%2Fjane%2F&workEmail=include`,
-    headers: { Authorization: "Bearer <ENRICHLAYER_API_KEY>", Accept: "application/json", "User-Agent": "enrichlayer-cli-v3/0.1.0" },
+    headers: { Authorization: "Bearer <ENRICHLAYER_API_KEY>", Accept: "application/json", "User-Agent": `enrichlayer-cli-v3/${VERSION}` },
   });
   assert.equal(dryRun.code, 0);
   assert.equal(dryRun.stderr, "");
@@ -192,7 +194,7 @@ test("Ctrl-C stops waiting, exits with 130 and warns that the call may be charge
   });
 
   const cli = startCli(["person", "--profile", "jane", "--max-age-seconds", "0"], { env });
-  await arrival;
+  await Promise.race([arrival, cli.done]);
   cli.child.kill("SIGINT");
   const result = await cli.done;
 
@@ -227,6 +229,86 @@ test("--help and --version exit with 0; no command shows the help and exits with
   const none = await runCli([]);
 
   assert.deepEqual([help.code, help.stderr], [0, ""]);
-  assert.deepEqual([version.code, version.stdout], [0, "0.1.0\n"]);
+  assert.deepEqual([version.code, version.stdout], [0, `${VERSION}\n`]);
   assert.deepEqual([none.code, none.stdout, none.stderr], [2, "", help.stdout]);
+});
+
+const COMPANIES = [
+  { companyName: "Acme", domain: { resolved: "acme.com" }, employeeCount: 12 },
+  { companyName: "Initech", domain: { resolved: "initech.com" }, employeeCount: 300 },
+];
+
+test("--format csv prints the rows to stdout and the cost to stderr", async (t) => {
+  const { env } = await withApi(t, () => ({ body: COMPANIES, headers: headers(0, "req-csv") }));
+
+  const result = await runCli(["company-search", "--q", "acme", "--format", "csv"], { env });
+
+  assert.deepEqual(
+    { code: result.code, stdout: result.stdout, stderr: result.stderr },
+    {
+      code: 0,
+      stdout: "companyName,domain.resolved,employeeCount\r\nAcme,acme.com,12\r\nInitech,initech.com,300\r\n",
+      stderr: "credits charged: 0, request id: req-csv\n",
+    },
+  );
+});
+
+test("--format table names the lists it leaves out, and --fields shows them", async (t) => {
+  const person = { fullName: "Jane Example", education: [{ school: "MIT" }, { school: "Stanford" }] };
+  const { env } = await withApi(t, () => ({ body: person, headers: headers(1, "req-table") }));
+
+  const plain = await runCli(["person", "--profile", "jane", "--format", "table"], { env });
+  const picked = await runCli(["person", "--profile", "jane", "--format=table", "--fields", "fullName,education"], { env });
+
+  assert.deepEqual([plain.code, plain.stdout, plain.stderr], [
+    0,
+    "fullName  Jane Example\n",
+    "Lists left out: education (2 items); name them in --fields to show them.\ncredits charged: 1, request id: req-table\n",
+  ]);
+  assert.deepEqual([picked.code, picked.stdout, picked.stderr], [
+    0,
+    "fullName            Jane Example\neducation.0.school  MIT\neducation.1.school  Stanford\n",
+    "credits charged: 1, request id: req-table\n",
+  ]);
+});
+
+test("--format yaml and jsonl carry the answer, the cost and the request id on stdout", async (t) => {
+  const { env } = await withApi(t, () => ({ body: { fullName: "Jane" }, headers: headers(1, "req-y") }));
+
+  const yaml = await runCli(["person", "--profile", "jane", "--format", "yaml"], { env });
+  const jsonl = await runCli(["person", "--profile", "jane", "--format", "jsonl"], { env });
+
+  assert.deepEqual([yaml.code, yaml.stdout, yaml.stderr], [0, 'data:\n  fullName: "Jane"\ncreditCost: 1\nrequestId: "req-y"\n', ""]);
+  assert.deepEqual([jsonl.code, jsonl.stdout, jsonl.stderr], [0, '{"data":{"fullName":"Jane"},"creditCost":1,"requestId":"req-y"}\n', ""]);
+});
+
+test("--fields outside table and csv, a malformed --fields and an unknown format exit with 2 before any request", async (t) => {
+  const { api, env } = await withApi(t);
+  const cases = [
+    [["--fields", "fullName"], "error: --fields works with --format table or csv; json, yaml and jsonl print the whole answer.\n"],
+    [["--format", "yaml", "--fields", "fullName"], "error: --fields works with --format table or csv; json, yaml and jsonl print the whole answer.\n"],
+    [
+      ["--format", "csv", "--fields", "fullName,,headline"],
+      "error: option '--fields <paths>' argument 'fullName,,headline' is invalid. Expected comma-separated field paths, for example fullName,location.city.\n",
+    ],
+    [["--format", "csv", "--fields", "location..city"], "error: option '--fields <paths>' argument 'location..city' is invalid. Expected comma-separated field paths, for example fullName,location.city.\n"],
+    [["--format", "xml"], "error: option '--format <name>' argument 'xml' is invalid. Allowed choices are json, table, csv, yaml, jsonl.\n"],
+  ];
+
+  for (const [extra, stderr] of cases) {
+    const result = await runCli(["person", "--profile", "jane", ...extra], { env });
+
+    assert.deepEqual({ code: result.code, stdout: result.stdout, stderr: result.stderr }, { code: 2, stdout: "", stderr }, extra.join(" "));
+  }
+  assert.equal(api.requests.length, 0);
+});
+
+test("--dry-run prints the request as JSON whatever the format", async (t) => {
+  const { api, env } = await withApi(t);
+
+  const result = await runCli(["company-search", "--q", "acme", "--format", "csv", "--fields", "companyName", "--dry-run"], { env });
+
+  assert.equal(result.code, 0);
+  assert.equal(JSON.parse(result.stdout).url, `${api.url}/v3/company/search?q=acme`);
+  assert.equal(api.requests.length, 0);
 });

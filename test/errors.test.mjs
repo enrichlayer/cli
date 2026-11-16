@@ -186,21 +186,18 @@ test("a timeout may be charged; without --max-age-seconds the advice is short", 
 });
 
 test("an unreachable host asks to check the network and ENRICHLAYER_API_BASE_URL", async () => {
-  const closed = await startApi(() => ({ body: {} }));
-  await closed.close();
-  const host = new URL(closed.url).host;
-
-  const failure = await failureFor({ body: {} }, { baseUrl: closed.url });
+  const failure = await failureFor({ body: {} }, { baseUrl: "http://127.0.0.1:2" });
 
   assert.deepEqual(failure, {
-    message: `Could not reach Enrich Layer at ${closed.url}: connect ECONNREFUSED ${host}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.`,
+    message:
+      "Could not reach Enrich Layer at http://127.0.0.1:2: connect ECONNREFUSED 127.0.0.1:2. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.",
     exitCode: 5,
   });
 });
 
 test("no key and a key with bad characters exit with the key code", async () => {
   assert.deepEqual(await failureFor({ body: {} }, { credentials: apiKeyCredentials({ env: {} }) }), {
-    message: "No API key. Set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.",
+    message: "No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.",
     exitCode: 3,
   });
   assert.deepEqual(await failureFor({ body: {} }, { credentials: apiKeyCredentials({ flag: "bad key" }) }), {

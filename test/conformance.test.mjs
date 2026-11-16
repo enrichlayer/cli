@@ -6,8 +6,8 @@ import { buildProgram, commandName, flagFor, optionFor } from "../build/program.
 import { readSpec } from "../scripts/spec-files.mjs";
 
 const spec = await readSpec();
-const program = buildProgram(async () => {});
-const COMMON_FLAGS = ["--api-key", "--dry-run"];
+const program = buildProgram({ run: async () => {}, auth: async () => {} });
+const COMMON_FLAGS = ["--format", "--fields", "--api-key", "--dry-run"];
 
 const FEWEST_FLAGS = {
   "/v3/person": ["--profile", "jane"],
@@ -65,7 +65,7 @@ test("there is one command for every path of the v3 spec, and no command for a p
 
   assert.deepEqual(commandDefs.map((def) => def.path).sort(), paths);
   assert.deepEqual(
-    program.commands.map((command) => command.name()).sort(),
+    program.commands.map((command) => command.name()).filter((name) => name !== "auth").sort(),
     paths.map((path) => path.slice("/v3/".length).replaceAll("/", "-")).sort(),
   );
   assert.deepEqual(Object.keys(FEWEST_FLAGS).sort(), paths);

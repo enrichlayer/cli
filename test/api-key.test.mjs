@@ -5,7 +5,7 @@ import { apiKeyCredentials } from "../build/auth/api-key.js";
 
 const NO_KEY = {
   name: "MissingApiKeyError",
-  message: "No API key. Set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.",
+  message: "No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.",
 };
 
 async function call(t, credentials) {

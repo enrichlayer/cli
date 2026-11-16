@@ -3,6 +3,7 @@ import type { V3Path } from "./generated/v3-params.js";
 export interface CommandDef {
   path: V3Path;
   description: string;
+  rows?: string;
   checkParams?: (params: Record<string, unknown>) => string | null;
 }
 
@@ -50,6 +51,7 @@ export const commandDefs: CommandDef[] = [
   },
   {
     path: "/v3/email/prospect",
+    rows: "emails",
     description: [
       "Find work email candidates for a person at a company: pass --full-name, or --first-name and/or --last-name, together with --domain.",
       `Each candidate has a validation verdict in validity — ${VERDICTS}; only valid is confirmed deliverable.`,

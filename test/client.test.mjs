@@ -157,7 +157,7 @@ test("an answer that is not JSON is an error", async (t) => {
 });
 
 test("an unreachable host is a network error", async () => {
-  await assert.rejects(testClient("http://127.0.0.1:1")({ path: "/v3/person", params: { profile: "jane" } }), V3NetworkError);
+  await assert.rejects(testClient("http://127.0.0.1:2")({ path: "/v3/person", params: { profile: "jane" } }), V3NetworkError);
 });
 
 test("names the client in the user agent when it is known", async (t) => {
