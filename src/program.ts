@@ -27,7 +27,7 @@ function parseFields(value: string): string[] {
 }
 
 const EXIT_CODES_HELP =
-  "Exit codes: 0 done, 1 unexpected error, 2 wrong flags or values, 3 API key or account, 4 not found, 5 not now, try again later, 6 no answer, the call may still be charged, 130 stopped with Ctrl-C.";
+  "Exit codes: 0 done, 1 unexpected error, 2 wrong flags or values, 3 API key, sign-in or account, 4 not found, 5 not now, try again later, 6 no answer, the call may still be charged, 130 stopped with Ctrl-C.";
 
 export function flagFor(name: string): string {
   return name
@@ -83,11 +83,15 @@ export function optionFor(path: string, param: V3Param): Option {
   throw new Error(`${path} ${param.name}: unsupported parameter type ${param.type}`);
 }
 
-export type AuthAction = "save" | "status" | "remove";
+export type AuthAction = "save" | "status" | "remove" | "login" | "logout";
+
+export interface AuthOptions {
+  noBrowser?: boolean;
+}
 
 export interface Handlers {
   run: (run: CommandRun) => Promise<void>;
-  auth: (action: AuthAction) => Promise<void>;
+  auth: (action: AuthAction, options?: AuthOptions) => Promise<void>;
 }
 
 export function buildProgram({ run: onRun, auth: onAuth }: Handlers): Command {
@@ -130,9 +134,17 @@ export function buildProgram({ run: onRun, auth: onAuth }: Handlers): Command {
       });
   }
 
-  const auth = program.command("auth").description("Save, check or remove the API key in the key file.");
+  const auth = program.command("auth").description("Save, check or remove the API key in the key file, or sign in with an Enrich Layer account.");
   auth.command("save").description("Save the API key from stdin to the key file.").action(() => onAuth("save"));
-  auth.command("status").description("Show which API key is in use and where the key file is.").action(() => onAuth("status"));
+  auth.command("status").description("Show which API key or sign-in is in use and where the key file is.").action(() => onAuth("status"));
   auth.command("remove").description("Remove the key file.").action(() => onAuth("remove"));
+  auth
+    .command("login")
+    .description(
+      "Sign in with an Enrich Layer account at auth.enrichlayer.com. Opens a browser when this machine has a screen; over SSH, in CI or with --no-browser it shows a link and a code to enter on any device. Waits up to 10 minutes for the approval. A given or saved API key still takes precedence over the sign-in.",
+    )
+    .option("--no-browser", "Show a link and a code instead of opening a browser")
+    .action((options: { browser: boolean }) => onAuth("login", { noBrowser: options.browser === false }));
+  auth.command("logout").description("Revoke the stored sign-in and delete it from this machine, even when the revocation fails.").action(() => onAuth("logout"));
   return program;
 }

@@ -51,7 +51,13 @@ test("every enrichlayer-v3 example in the README runs and exits with 0", async (
   writeFileSync(join(bin, "enrichlayer-v3"), `#!/bin/sh\nexec "${process.execPath}" "${CLI_PATH}" "$@"\n`);
   chmodSync(join(bin, "enrichlayer-v3"), 0o755);
   writeFileSync(join(work, "key.txt"), "sk-readme-test\n");
-  const env = { PATH: `${bin}:${process.env.PATH}`, HOME: home, ENRICHLAYER_API_KEY: "sk-readme-test", ENRICHLAYER_API_BASE_URL: api.url };
+  const env = {
+    PATH: `${bin}:${process.env.PATH}`,
+    HOME: home,
+    ENRICHLAYER_API_KEY: "sk-readme-test",
+    ENRICHLAYER_API_BASE_URL: api.url,
+    ENRICHLAYER_CREDENTIAL_STORE: "file",
+  };
 
   for (const line of examples(README)) {
     await t.test(line, async () => {

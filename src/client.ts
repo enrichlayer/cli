@@ -115,7 +115,7 @@ export function requestUrl(baseUrl: string, path: string, params: V3Params): str
 
 export function createV3Client(options: ClientOptions): CallV3 {
   return async ({ path, params, signal, clientName }) => {
-    const authorization = options.credentials.authorization();
+    let authorization = await options.credentials.authorization();
     const userAgent = userAgentFor(options.userAgent, clientName);
     const url = requestUrl(options.baseUrl, path, params);
     const started = performance.now();
@@ -123,7 +123,7 @@ export function createV3Client(options: ClientOptions): CallV3 {
     const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
 
     try {
-      for (let attempt = 0; ; attempt++) {
+      for (let attempt = 0, refreshed = false; ; ) {
         let response: Response;
         try {
           response = await fetch(url, {
@@ -145,7 +145,19 @@ export function createV3Client(options: ClientOptions): CallV3 {
         if (retryable && attempt < options.retryDelaysMs.length) {
           await response.body?.cancel();
           await sleep(retryAfterMs(response) ?? options.retryDelaysMs[attempt], undefined, { signal: abort });
+          attempt++;
           continue;
+        }
+
+        // A signed-in token can be revoked or expire early: refresh it and retry once, never more.
+        if (response.status === 401 && !refreshed && options.credentials.refreshAfter401) {
+          refreshed = true;
+          const fresher = await options.credentials.refreshAfter401(authorization);
+          if (fresher !== null) {
+            await response.body?.cancel();
+            authorization = fresher;
+            continue;
+          }
         }
 
         let text: string;

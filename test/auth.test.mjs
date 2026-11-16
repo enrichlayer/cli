@@ -5,8 +5,8 @@ import { chmodSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const KEY = "sk-cli-test-7f3k2q9x";
-const NO_KEY =
-  "error: No API key. Set ENRICHLAYER_API_KEY, pass --api-key, or save a key with enrichlayer-v3 auth save; create a key at https://enrichlayer.com/dashboard.\n";
+const NO_CREDENTIAL =
+  "error: Not signed in and no API key. Sign in with enrichlayer-v3 auth login, or save a key with enrichlayer-v3 auth save, set ENRICHLAYER_API_KEY or pass --api-key; create a key at https://enrichlayer.com/dashboard.\n";
 
 async function setUp(t, respond = () => ({ body: [{ companyName: "Acme" }], headers: headers(0, "req-auth") })) {
   const api = await startApi(respond);
@@ -35,7 +35,7 @@ test("auth save, a call with the saved key, auth status, auth remove, and then n
   assert.equal(api.requests[0].headers.authorization, `Bearer ${KEY}`);
   assert.deepEqual(outcome(status), { code: 0, stdout: `Key in use: the key file ${file}\nKey file: ${file} (saved)\n`, stderr: "" });
   assert.deepEqual(outcome(removed), { code: 0, stdout: `Removed the key file ${file}.\n`, stderr: "" });
-  assert.deepEqual(outcome(afterRemove), { code: 3, stdout: "", stderr: NO_KEY });
+  assert.deepEqual(outcome(afterRemove), { code: 3, stdout: "", stderr: NO_CREDENTIAL });
   assert.deepEqual(outcome(statusAfter), { code: 3, stdout: `Key in use: none\nKey file: ${file} (not saved)\n`, stderr: "" });
   assert.deepEqual(outcome(removedAgain), { code: 0, stdout: `No key file at ${file}.\n`, stderr: "" });
   assert.equal(api.requests.length, 1);

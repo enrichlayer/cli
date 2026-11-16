@@ -62,7 +62,10 @@ export function startCli(args, { env = {}, input, home, xdg } = {}) {
   const ownXdg = xdg === undefined;
   const cliXdg = ownXdg ? mkdtempSync(join(tmpdir(), "enrichlayer-cli-xdg-")) : xdg;
   const childEnv = Object.fromEntries(
-    Object.entries({ PATH: process.env.PATH, HOME: cliHome, XDG_CONFIG_HOME: cliXdg ?? undefined, ...env }).filter(([, value]) => value !== undefined),
+    // The file store keeps every test away from the OS keychain, which is per user, not per HOME.
+    Object.entries({ PATH: process.env.PATH, HOME: cliHome, XDG_CONFIG_HOME: cliXdg ?? undefined, ENRICHLAYER_CREDENTIAL_STORE: "file", ...env }).filter(
+      ([, value]) => value !== undefined,
+    ),
   );
   const child = spawn(process.execPath, [CLI_PATH, ...args], { env: childEnv, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
   if (input !== undefined) child.stdin.end(input);
