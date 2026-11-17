@@ -37,7 +37,7 @@ function shell(line, { cwd, env }) {
 }
 
 test("the README has the examples this test runs", () => {
-  assert.equal(examples(README).length, 14);
+  assert.equal(examples(README).length, 15);
 });
 
 test("every enrichlayer-v3 example in the README runs and exits with 0", async (t) => {

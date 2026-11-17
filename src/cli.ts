@@ -7,8 +7,9 @@ import { createV3Client, requestUrl } from "./client.js";
 import { apiBaseUrl, REQUEST_TIMEOUT_MS, RETRY_DELAYS_MS, USER_AGENT } from "./config.js";
 import { cutOffAdvice, describeFailure, EXIT_CODES } from "./errors.js";
 import { v3Params } from "./generated/v3-params.js";
+import { applyInstall, describePlan, MCP_CLIENTS, planInstall } from "./mcp-install.js";
 import { render } from "./output.js";
-import { type AuthAction, type AuthOptions, buildProgram, type CommandRun, splitAssignments } from "./program.js";
+import { type AuthAction, type AuthOptions, buildProgram, type CommandRun, type McpInstallRun, splitAssignments } from "./program.js";
 import { login, logout, type SignInDeps, signInStatus } from "./sign-in-commands.js";
 
 const FIELDS_FORMATS = ["table", "csv"];
@@ -181,6 +182,15 @@ async function auth(action: AuthAction, options: AuthOptions = {}): Promise<void
   return removeKey(file);
 }
 
+function mcpInstall({ client, dryRun, force }: McpInstallRun): void {
+  if (client === undefined) return say(`Clients: ${MCP_CLIENTS.join(", ")}. Run enrichlayer-v3 mcp install <client>.`);
+  const plan = planInstall({ client, force });
+  if (dryRun && plan.action !== "refuse") return printJson({ dryRun: true, client, ...describePlan(plan) });
+  const { lines, error } = applyInstall(plan);
+  for (const line of lines) say(line);
+  if (error) fail(error, EXIT_CODES.unexpected);
+}
+
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (error: NodeJS.ErrnoException) => {
     if (error.code === "EPIPE") process.exit();
@@ -189,7 +199,7 @@ for (const stream of [process.stdout, process.stderr]) {
 }
 
 try {
-  await buildProgram({ run, auth }).parseAsync(splitAssignments(process.argv.slice(2)), { from: "user" });
+  await buildProgram({ run, auth, mcpInstall }).parseAsync(splitAssignments(process.argv.slice(2)), { from: "user" });
 } catch (error) {
   if (error instanceof CommanderError) process.exitCode = error.exitCode === 0 ? EXIT_CODES.ok : EXIT_CODES.usage;
   else fail(error instanceof Error ? error.message : String(error), EXIT_CODES.unexpected);

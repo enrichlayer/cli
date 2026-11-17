@@ -1,7 +1,8 @@
-import { Command, InvalidArgumentError, Option } from "commander";
+import { Argument, Command, InvalidArgumentError, Option } from "commander";
 import { type CommandDef, commandDefs } from "./commands.js";
 import { VERSION } from "./config.js";
 import { type V3Param, v3Params } from "./generated/v3-params.js";
+import { MCP_CLIENTS, type McpClient } from "./mcp-install.js";
 import { FORMATS, type Format } from "./output.js";
 
 export interface CommandRun {
@@ -89,12 +90,19 @@ export interface AuthOptions {
   noBrowser?: boolean;
 }
 
+export interface McpInstallRun {
+  client?: McpClient;
+  dryRun: boolean;
+  force: boolean;
+}
+
 export interface Handlers {
   run: (run: CommandRun) => Promise<void>;
   auth: (action: AuthAction, options?: AuthOptions) => Promise<void>;
+  mcpInstall: (run: McpInstallRun) => void;
 }
 
-export function buildProgram({ run: onRun, auth: onAuth }: Handlers): Command {
+export function buildProgram({ run: onRun, auth: onAuth, mcpInstall: onMcpInstall }: Handlers): Command {
   const program = new Command("enrichlayer-v3")
     .description(DESCRIPTION)
     .version(VERSION)
@@ -146,5 +154,18 @@ export function buildProgram({ run: onRun, auth: onAuth }: Handlers): Command {
     .option("--no-browser", "Show a link and a code instead of opening a browser")
     .action((options: { browser: boolean }) => onAuth("login", { noBrowser: options.browser === false }));
   auth.command("logout").description("Revoke the stored sign-in and delete it from this machine, even when the revocation fails.").action(() => onAuth("logout"));
+
+  const mcp = program.command("mcp").description("Connect the hosted Enrich Layer v3 MCP server to an MCP client.");
+  mcp
+    .command("install")
+    .description(
+      "Add the hosted Enrich Layer v3 MCP server to an MCP client. Claude Code, Codex and VS Code are asked to add it with their own command; for Cursor the entry is written to ~/.cursor/mcp.json. No API key is read or written: the client signs in through the browser. Without a client it lists the clients.",
+    )
+    .addArgument(new Argument("[client]", "The client to add the server to.").choices(MCP_CLIENTS))
+    .option("--dry-run", "Print what would be run or written; nothing is run and nothing is written")
+    .option("--force", "For Cursor: replace an enrichlayer-v3 entry that differs")
+    .action((client: McpClient | undefined, options: { dryRun?: boolean; force?: boolean }) =>
+      onMcpInstall({ client, dryRun: options.dryRun === true, force: options.force === true }),
+    );
   return program;
 }
