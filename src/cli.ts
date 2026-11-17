@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 import { CommanderError } from "commander";
-import { apiKeyCredentials, DASHBOARD_URL, isKeyInEnv, isValidKey } from "./auth/api-key.js";
+import { type Credentials, DASHBOARD_URL, isKeyInEnv, isValidKey, SIGN_IN_SOURCE } from "./auth/api-key.js";
 import { errorCode, keyFilePath, readKeyFile, removeKeyFile, saveKeyFile } from "./auth/key-file.js";
+import { defaultStore, resolveCredentials, SignInCredentials, sessionDir } from "./auth/sign-in.js";
 import { createV3Client, requestUrl } from "./client.js";
 import { apiBaseUrl, REQUEST_TIMEOUT_MS, RETRY_DELAYS_MS, USER_AGENT } from "./config.js";
 import { cutOffAdvice, describeFailure, EXIT_CODES } from "./errors.js";
 import { v3Params } from "./generated/v3-params.js";
 import { render } from "./output.js";
-import { type AuthAction, buildProgram, type CommandRun, splitAssignments } from "./program.js";
+import { type AuthAction, type AuthOptions, buildProgram, type CommandRun, splitAssignments } from "./program.js";
+import { login, logout, type SignInDeps, signInStatus } from "./sign-in-commands.js";
 
 const FIELDS_FORMATS = ["table", "csv"];
 
@@ -47,14 +49,22 @@ async function run({ def, params, apiKey, dryRun, format, fields }: CommandRun):
   if (fields && !FIELDS_FORMATS.includes(format))
     return fail("--fields works with --format table or csv; json, yaml and jsonl print the whole answer.", EXIT_CODES.usage);
 
-  const credentials = apiKeyCredentials({ flag: apiKey });
   const hasMaxAgeSeconds = v3Params[def.path].some((param) => param.name === "maxAgeSeconds");
+  let credentials: Credentials;
+  try {
+    credentials = await resolveCredentials({ flag: apiKey });
+  } catch (error) {
+    const failure = describeFailure(error, { keySource: SIGN_IN_SOURCE, hasMaxAgeSeconds });
+    return fail(failure.message, failure.exitCode);
+  }
   const context = { keySource: credentials.source, hasMaxAgeSeconds };
   const baseUrl = apiBaseUrl();
 
   if (dryRun) {
     try {
-      credentials.authorization();
+      // A dry run must not refresh: a refresh rotates the refresh token. Check the stored pair as it is.
+      if (credentials instanceof SignInCredentials) await credentials.tokens();
+      else await credentials.authorization();
     } catch (error) {
       const failure = describeFailure(error, context);
       return fail(failure.message, failure.exitCode);
@@ -120,13 +130,37 @@ async function saveKey(file: string): Promise<void> {
   if (isKeyInEnv()) say("ENRICHLAYER_API_KEY is set and takes precedence over the key file.");
 }
 
-function showStatus(file: string): void {
+async function showStatus(file: string, deps: SignInDeps): Promise<void> {
   const state = readKeyFile(file);
   const inUse = isKeyInEnv() ? "ENRICHLAYER_API_KEY" : state.status === "saved" ? `the key file ${file}` : "none";
   const fileState = state.status === "saved" ? "saved" : state.status === "missing" ? "not saved" : `not usable: ${state.reason}`;
   say(`Key in use: ${inUse}`);
   say(`Key file: ${file} (${fileState})`);
-  if (inUse === "none") process.exitCode = EXIT_CODES.key;
+  const signedIn = await signInStatus(deps);
+  if (inUse === "none" && !signedIn) process.exitCode = EXIT_CODES.key;
+}
+
+/** The key that takes precedence over a sign-in: the variable, or a key file, usable or not. */
+function keyInUse(file: string): string | null {
+  if (isKeyInEnv()) return "ENRICHLAYER_API_KEY";
+  return readKeyFile(file).status === "missing" ? null : `the key file ${file}`;
+}
+
+async function signIn(action: (deps: SignInDeps) => Promise<void>, file: string): Promise<void> {
+  const deps: SignInDeps = {
+    env: process.env,
+    store: defaultStore(),
+    lockDir: sessionDir(),
+    say,
+    note: (line) => process.stderr.write(`${line}\n`),
+    keyInUse: () => keyInUse(file),
+  };
+  try {
+    await action(deps);
+  } catch (error) {
+    const failure = describeFailure(error, { keySource: SIGN_IN_SOURCE, hasMaxAgeSeconds: false });
+    fail(failure.message, failure.exitCode);
+  }
 }
 
 function removeKey(file: string): void {
@@ -138,10 +172,12 @@ function removeKey(file: string): void {
   if (isKeyInEnv()) say("ENRICHLAYER_API_KEY is still set and stays in use.");
 }
 
-async function auth(action: AuthAction): Promise<void> {
+async function auth(action: AuthAction, options: AuthOptions = {}): Promise<void> {
   const file = keyFilePath();
   if (action === "save") return saveKey(file);
-  if (action === "status") return showStatus(file);
+  if (action === "status") return signIn((deps) => showStatus(file, deps), file);
+  if (action === "login") return signIn((deps) => login(options.noBrowser === true, deps), file);
+  if (action === "logout") return signIn(logout, file);
   return removeKey(file);
 }
 

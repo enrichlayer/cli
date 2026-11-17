@@ -19,11 +19,14 @@ enrichlayer-v3 --help
 
 ## API key
 
-Create an API key at https://enrichlayer.com/dashboard. The CLI takes the key from, in this order:
+Create an API key at https://enrichlayer.com/dashboard, or sign in with your account instead (see [Signing in](#signing-in)). The CLI takes the credential from, in this order:
 
 1. `--api-key <key>` on the command;
 2. the `ENRICHLAYER_API_KEY` environment variable, when it is not empty;
-3. the key file saved with `enrichlayer-v3 auth save` (see [Saving the key](#saving-the-key)).
+3. the key file saved with `enrichlayer-v3 auth save` (see [Saving the key](#saving-the-key));
+4. the sign-in stored by `enrichlayer-v3 auth login`.
+
+A given or saved key always wins over the sign-in, and a call with a key works exactly as it does without a sign-in.
 
 ```sh
 export ENRICHLAYER_API_KEY=<your key>
@@ -103,6 +106,16 @@ To save a key you copied from the dashboard, pipe the clipboard in:
 
 The key file is `credentials.json` in `$XDG_CONFIG_HOME/enrichlayer-v3` when `XDG_CONFIG_HOME` is set, otherwise in `~/.config/enrichlayer-v3` on macOS and Linux and in `%APPDATA%\enrichlayer-v3` on Windows. It is written with mode 0600 in a folder with mode 0700. A call stops with exit code 3 when other users can read the key file, when a link or a folder is in its place, or when it is not valid; the error says how to fix it.
 
+## Signing in
+
+`enrichlayer-v3 auth login` signs in with your Enrich Layer account at auth.enrichlayer.com, so you need no API key on this machine.
+
+On a machine with a screen it opens the sign-in page in the browser and prints the same link, in case the browser does not open or opens the wrong profile; the browser comes back to the CLI on a temporary address on 127.0.0.1 that only this login accepts. Over SSH, in CI, in a container, on Linux without a display, or with `auth login --no-browser`, it prints a link and a code instead: open https://auth.enrichlayer.com/device on any device and enter the code. Either way the CLI waits up to 10 minutes for the approval.
+
+`auth status` shows the stored sign-in below the key lines: the account, the client, the grant, until when the current access token is valid, and whether the sign-in is in use or a key takes precedence. `auth logout` revokes the sign-in at auth.enrichlayer.com and deletes it from this machine, even when the revocation fails; a damaged sign-in file, or a link or a folder in its place, is deleted without revoking anything. None of them prints a token.
+
+The sign-in is kept in `session.json` in the same folder as the key file, with mode 0600. A call stops with exit code 3 when other users can read it, when a link or a folder is in its place, or when it is damaged; the error says how to fix it. The CLI renews the sign-in by itself before it expires, and once more if the API rejects it.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -110,15 +123,15 @@ The key file is `credentials.json` in `$XDG_CONFIG_HOME/enrichlayer-v3` when `XD
 | 0 | the answer arrived, or `--dry-run` passed |
 | 1 | unexpected error |
 | 2 | wrong flags or values, including a request the API rejected as invalid (400) |
-| 3 | API key or account: no key, a malformed key, a key file that cannot be used, a rejected key (401), access denied or not enough credits (403) |
+| 3 | API key, sign-in or account: no key and no sign-in, a malformed key, a key file or a sign-in file that cannot be used, a rejected key or sign-in (401), a sign-in that was declined, expired or revoked, access denied or not enough credits (403) |
 | 4 | not found (404) |
-| 5 | not now: no fresh enough copy (409), rate limit (429), the API unavailable (5xx) or not reachable |
+| 5 | not now: no fresh enough copy (409), rate limit (429), the API or the sign-in server unavailable (5xx) or not reachable |
 | 6 | the answer did not arrive (timeout or a broken connection); the call may still be charged |
 | 130 | stopped with Ctrl-C |
 
 ## Dry run
 
-`--dry-run` makes every check of a real call, the API key included, and prints the request as JSON instead of sending it, so nothing is charged. The key itself is not printed: the `Authorization` header shows where it came from.
+`--dry-run` makes every check of a real call, the API key included, and prints the request as JSON instead of sending it, so nothing is charged. The key itself is not printed: the `Authorization` header shows where it came from. With a sign-in it checks the stored sign-in without renewing it and without asking the sign-in server, so a sign-in that was revoked still passes.
 
 ```sh
 enrichlayer-v3 person --profile williamhgates --dry-run
@@ -130,7 +143,7 @@ enrichlayer-v3 person --profile williamhgates --dry-run
 
 Ctrl-C stops waiting and exits with 130. The CLI stops waiting by itself after about 5 minutes and exits with 6. In both cases the call may still be charged: to get the copy that was saved in the meantime, run the same command without `--max-age-seconds` instead of repeating a live lookup.
 
-A call is retried only when the API answers 429 or 5xx, at most twice, and never after a timeout or a broken connection.
+A call is retried only when the API answers 429 or 5xx, at most twice, and never after a timeout or a broken connection. With a sign-in, a 401 renews the sign-in and repeats the call once.
 
 ## Environment
 
@@ -139,6 +152,7 @@ A call is retried only when the API answers 429 or 5xx, at most twice, and never
 | `ENRICHLAYER_API_KEY` | the API key, when `--api-key` is not given; an empty value counts as unset |
 | `ENRICHLAYER_API_BASE_URL` | the API host, `https://api.enrichlayer.com` by default |
 | `XDG_CONFIG_HOME` | where the key file is kept, see [Saving the key](#saving-the-key) |
+| `ENRICHLAYER_AUTH_URL` | the sign-in server, `https://auth.enrichlayer.com` by default; an `https` address, or `http` on 127.0.0.1, localhost or ::1 |
 
 ## Development
 

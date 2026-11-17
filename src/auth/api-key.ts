@@ -4,9 +4,18 @@ export const DASHBOARD_URL = "https://enrichlayer.com/dashboard";
 
 export type KeySource = string;
 
+/** The source of a stored sign-in, as messages and --dry-run name it. */
+export const SIGN_IN_SOURCE = "the stored sign-in";
+
 export interface Credentials {
   source: KeySource;
-  authorization(): string;
+  /** The Authorization header for the next request. */
+  authorization(): string | Promise<string>;
+  /**
+   * After a 401 for the header `rejected`: a fresher header to retry with once, or null when there is
+   * none. API keys do not have this.
+   */
+  refreshAfter401?(rejected: string): Promise<string | null>;
 }
 
 export class MissingApiKeyError extends Error {

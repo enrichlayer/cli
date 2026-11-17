@@ -1,4 +1,6 @@
-import { DASHBOARD_URL, InvalidApiKeyError, KeyFileError, type KeySource, MissingApiKeyError } from "./auth/api-key.js";
+import { DASHBOARD_URL, InvalidApiKeyError, KeyFileError, type KeySource, MissingApiKeyError, SIGN_IN_SOURCE } from "./auth/api-key.js";
+import { OAuthError, SignInUnavailableError } from "./auth/oauth.js";
+import { NotSignedInError } from "./auth/sign-in.js";
 import { V3ApiError, V3InterruptedError, V3NetworkError, V3TimeoutError } from "./client.js";
 
 const DAY_SECONDS = 86_400;
@@ -45,6 +47,8 @@ function apiFailure(error: V3ApiError, keySource: KeySource): Failure {
 
   if (error.status === 400)
     return { message: `The request was rejected as invalid: ${reason}. Fix the flags and run again.`, exitCode: EXIT_CODES.usage };
+  if (error.status === 401 && keySource === SIGN_IN_SOURCE)
+    return { message: `The stored sign-in was rejected: ${reason}. Run enrichlayer-v3 auth login to sign in again.`, exitCode: EXIT_CODES.key };
   if (error.status === 401)
     return {
       message: `The API key from ${keySource} was rejected: ${reason}. Use a valid key from ${DASHBOARD_URL}.`,
@@ -54,6 +58,11 @@ function apiFailure(error: V3ApiError, keySource: KeySource): Failure {
     if (/insufficient credits|top.?up/i.test(reason))
       return {
         message: `Not enough credits: ${reason}. Top up the account at ${DASHBOARD_URL}, then run again.`,
+        exitCode: EXIT_CODES.key,
+      };
+    if (keySource === SIGN_IN_SOURCE)
+      return {
+        message: `Access denied for ${error.path}: ${reason}. The signed-in account cannot use this endpoint; contact ${SUPPORT_EMAIL}.`,
         exitCode: EXIT_CODES.key,
       };
     return {
@@ -103,7 +112,8 @@ export function describeFailure(error: unknown, { keySource, hasMaxAgeSeconds }:
       message: `${error.message}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.`,
       exitCode: EXIT_CODES.notNow,
     };
-  if (error instanceof MissingApiKeyError || error instanceof InvalidApiKeyError || error instanceof KeyFileError)
+  if (error instanceof SignInUnavailableError) return { message: error.message, exitCode: EXIT_CODES.notNow };
+  if (error instanceof MissingApiKeyError || error instanceof InvalidApiKeyError || error instanceof KeyFileError || error instanceof NotSignedInError || error instanceof OAuthError)
     return { message: error.message, exitCode: EXIT_CODES.key };
   return { message: error instanceof Error ? error.message : String(error), exitCode: EXIT_CODES.unexpected };
 }
