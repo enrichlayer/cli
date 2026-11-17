@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, lstatSync, readFileSync, realpathSync, renameSync, rmSync, type Stats, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -57,14 +57,46 @@ function isCursorEntry(value: unknown): boolean {
   return isPlainObject(value) && Object.keys(value).length === 1 && value.url === MCP_SERVER_URL;
 }
 
+function statsOf(path: string, read: (path: string) => Stats): Stats | null {
+  try {
+    return read(path);
+  } catch {
+    return null;
+  }
+}
+
+function isWritable(path: string): boolean {
+  try {
+    accessSync(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function planCursor({ home, force }: { home: string; force: boolean }): InstallPlan {
   const folder = join(home, ".cursor");
   const file = join(folder, "mcp.json");
-  if (!existsSync(folder)) return { action: "refuse", message: `Cursor was not found: there is no folder ${folder}. Install Cursor and open it once, then run again.` };
+  const refuse = (message: string): InstallPlan => ({ action: "refuse", message });
+  const leftAlone = "It was left as it is.";
+  const byHand = `${leftAlone} Add this to its mcpServers by hand: ${CURSOR_ENTRY_TEXT}`;
 
-  const isNew = !existsSync(file);
-  const before = isNew ? "" : readFileSync(file, "utf8");
-  const byHand = `It was left as it is. Add this to its mcpServers by hand: ${CURSOR_ENTRY_TEXT}`;
+  const folderStats = statsOf(folder, statSync);
+  if (!folderStats) return refuse(`Cursor was not found: there is no folder ${folder}. Install Cursor and open it once, then run again.`);
+  if (!folderStats.isDirectory()) return refuse(`${folder} is not a folder, so Cursor's mcp.json cannot be in it. Nothing was changed.`);
+
+  const stats = statsOf(file, statSync);
+  if (!stats && statsOf(file, lstatSync))
+    return refuse(`${file} is a link to a file that does not exist. ${leftAlone} Create the file the link points to and run again; the entry to add is ${CURSOR_ENTRY_TEXT}`);
+  if (stats && !stats.isFile()) return refuse(`${file} is not a regular file. ${leftAlone}`);
+  let before = "";
+  if (stats) {
+    try {
+      before = readFileSync(file, "utf8");
+    } catch (error) {
+      return refuse(`${file} cannot be read (${(error as NodeJS.ErrnoException).code}). ${byHand}`);
+    }
+  }
   let config: unknown = {};
   if (before.trim() !== "") {
     try {
@@ -82,9 +114,14 @@ function planCursor({ home, force }: { home: string; force: boolean }): InstallP
   if (replaces && !force)
     return { action: "refuse", message: `${file} already has a different ${MCP_SERVER_NAME} entry. Run again with --force to replace it with ${CURSOR_ENTRY_TEXT}` };
 
+  const target = stats ? realpathSync(file) : file;
+  if (!isWritable(dirname(target)))
+    return refuse(`The folder ${dirname(target)} cannot be written to, so nothing was changed. Add this to mcpServers in ${file} by hand: ${CURSOR_ENTRY_TEXT}`);
+  if (stats && !isWritable(target)) return refuse(`${file} is read-only. ${byHand}`);
+
   const indent = /^([ \t]+)"/m.exec(before)?.[1] ?? "  ";
   const text = `${JSON.stringify({ ...config, mcpServers: { ...servers, [MCP_SERVER_NAME]: CURSOR_ENTRY } }, null, indent)}\n`;
-  return { action: "write", file, target: isNew ? file : realpathSync(file), replaces, text, mode: isNew ? 0o600 : statSync(file).mode & 0o777 };
+  return { action: "write", file, target, replaces, text, mode: stats ? stats.mode & 0o777 : 0o600 };
 }
 
 export function planInstall({ client, force = false, home = homedir() }: { client: McpClient; force?: boolean; home?: string }): InstallPlan {

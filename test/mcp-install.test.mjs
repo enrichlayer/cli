@@ -1,7 +1,8 @@
 import { runCli, tempDir } from "./helpers.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const URL = "https://mcp.enrichlayer.com/v3/mcp";
@@ -20,7 +21,7 @@ function fakeClients(t, programs, { exitCode = 0 } = {}) {
 }
 
 function cursorHome(t, content, { mode = 0o644 } = {}) {
-  const home = tempDir(t);
+  const home = realpathSync(tempDir(t));
   const folder = join(home, ".cursor");
   const file = join(folder, "mcp.json");
   mkdirSync(folder);
@@ -262,4 +263,201 @@ test("without a client the clients are listed, and an unknown client is a usage 
   assert.equal(unknown.code, 2);
   assert.equal(unknown.stdout, "");
   assert.deepEqual(calls(), []);
+});
+
+const BY_HAND = `It was left as it is. Add this to its mcpServers by hand: ${ENTRY}`;
+const isRoot = process.getuid?.() === 0;
+
+function listing(folder) {
+  return readdirSync(folder).sort();
+}
+
+test("a linked mcp.json whose file does not exist is refused and stays a link", async (t) => {
+  const cases = [["mcp", "install", "cursor"], ["mcp", "install", "cursor", "--force"], ["mcp", "install", "cursor", "--dry-run"]];
+
+  for (const args of cases) {
+    await t.test(args.join(" "), async (t) => {
+      const { home, folder, file, env } = cursorHome(t);
+      const elsewhere = tempDir(t);
+      const missing = join(elsewhere, "dotfiles-mcp.json");
+      symlinkSync(missing, file);
+
+      const result = await runCli(args, { home, env });
+
+      assert.deepEqual(result, {
+        code: 1,
+        stdout: "",
+        stderr: `error: ${file} is a link to a file that does not exist. It was left as it is. Create the file the link points to and run again; the entry to add is ${ENTRY}\n`,
+        homeEntries: [".cursor"],
+      });
+      assert.equal(lstatSync(file).isSymbolicLink(), true);
+      assert.equal(readlinkSync(file), missing);
+      assert.deepEqual(listing(elsewhere), []);
+      assert.deepEqual(listing(folder), ["mcp.json"]);
+    });
+  }
+});
+
+test("a link through another link reaches the file and both links stay", async (t) => {
+  const { home, folder, file, env } = cursorHome(t);
+  const elsewhere = tempDir(t);
+  const real = join(elsewhere, "real.json");
+  const middle = join(elsewhere, "middle.json");
+  writeFileSync(real, '{"mcpServers":{}}\n');
+  symlinkSync(real, middle);
+  symlinkSync(middle, file);
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env });
+
+  assert.equal(result.code, 0);
+  assert.equal(readlinkSync(file), middle);
+  assert.equal(readlinkSync(middle), real);
+  assert.equal(lstatSync(real).isFile(), true);
+  assert.deepEqual(JSON.parse(readFileSync(real, "utf8")), { mcpServers: { "enrichlayer-v3": { url: URL } } });
+  assert.deepEqual(listing(elsewhere), ["middle.json", "real.json"]);
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+});
+
+test("a .cursor that is a link to nowhere counts as no Cursor, and the link stays", async (t) => {
+  const home = tempDir(t);
+  const folder = join(home, ".cursor");
+  const missing = join(tempDir(t), "cursor-settings");
+  symlinkSync(missing, folder);
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env: { PATH: tempDir(t) } });
+
+  assert.deepEqual(result, {
+    code: 1,
+    stdout: "",
+    stderr: `error: Cursor was not found: there is no folder ${folder}. Install Cursor and open it once, then run again.\n`,
+    homeEntries: [".cursor"],
+  });
+  assert.equal(readlinkSync(folder), missing);
+  assert.equal(existsSync(missing), false);
+});
+
+test("a .cursor that is a file is refused and left as it is", async (t) => {
+  const home = tempDir(t);
+  const folder = join(home, ".cursor");
+  writeFileSync(folder, "not a folder\n");
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env: { PATH: tempDir(t) } });
+
+  assert.deepEqual(result, {
+    code: 1,
+    stdout: "",
+    stderr: `error: ${folder} is not a folder, so Cursor's mcp.json cannot be in it. Nothing was changed.\n`,
+    homeEntries: [".cursor"],
+  });
+  assert.equal(readFileSync(folder, "utf8"), "not a folder\n");
+});
+
+test("a folder in the place of mcp.json is refused and left as it is", async (t) => {
+  const { home, folder, file, env } = cursorHome(t);
+  mkdirSync(file);
+  writeFileSync(join(file, "keep.txt"), "keep\n");
+
+  const result = await runCli(["mcp", "install", "cursor", "--force"], { home, env });
+
+  assert.deepEqual(result, { code: 1, stdout: "", stderr: `error: ${file} is not a regular file. It was left as it is.\n`, homeEntries: [".cursor"] });
+  assert.deepEqual(listing(file), ["keep.txt"]);
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+});
+
+test("a named pipe in the place of mcp.json is refused without waiting on it", { skip: process.platform === "win32" }, async (t) => {
+  const { home, folder, file, env } = cursorHome(t);
+  execFileSync("mkfifo", [file]);
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env });
+
+  assert.deepEqual(result, { code: 1, stdout: "", stderr: `error: ${file} is not a regular file. It was left as it is.\n`, homeEntries: [".cursor"] });
+  assert.equal(lstatSync(file).isFIFO(), true);
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+});
+
+test("an mcp.json that cannot be read is refused and left as it is", { skip: isRoot }, async (t) => {
+  const { home, folder, file, env } = cursorHome(t, '{"mcpServers":{}}\n', { mode: 0o200 });
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env });
+
+  assert.deepEqual(result, { code: 1, stdout: "", stderr: `error: ${file} cannot be read (EACCES). ${BY_HAND}\n`, homeEntries: [".cursor"] });
+  assert.equal(modeOf(file), 0o200);
+  chmodSync(file, 0o600);
+  assert.equal(readFileSync(file, "utf8"), '{"mcpServers":{}}\n');
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+});
+
+test("a read-only mcp.json is refused and left as it is, unless the entry is already there", { skip: isRoot }, async (t) => {
+  const content = '{"mcpServers":{}}\n';
+  const { home, folder, file, env } = cursorHome(t, content, { mode: 0o444 });
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env });
+
+  assert.deepEqual(result, { code: 1, stdout: "", stderr: `error: ${file} is read-only. ${BY_HAND}\n`, homeEntries: [".cursor"] });
+  assert.equal(readFileSync(file, "utf8"), content);
+  assert.equal(modeOf(file), 0o444);
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+
+  const present = cursorHome(t, `{"mcpServers":{"enrichlayer-v3":{"url":"${URL}"}}}`, { mode: 0o444 });
+
+  const again = await runCli(["mcp", "install", "cursor"], { home: present.home, env: present.env });
+
+  assert.deepEqual(again, { code: 0, stdout: `enrichlayer-v3 is already in ${present.file}.\n`, stderr: "", homeEntries: [".cursor"] });
+});
+
+test("a .cursor folder that cannot be written to is refused, with or without mcp.json", { skip: isRoot }, async (t) => {
+  for (const content of [undefined, '{"mcpServers":{}}\n']) {
+    await t.test(content === undefined ? "no mcp.json" : "with mcp.json", async (t) => {
+      const { home, folder, file, env } = cursorHome(t, content);
+      chmodSync(folder, 0o555);
+
+      const result = await runCli(["mcp", "install", "cursor"], { home, env }).finally(() => chmodSync(folder, 0o755));
+
+      assert.deepEqual(result, {
+        code: 1,
+        stdout: "",
+        stderr: `error: The folder ${folder} cannot be written to, so nothing was changed. Add this to mcpServers in ${file} by hand: ${ENTRY}\n`,
+        homeEntries: [".cursor"],
+      });
+      assert.deepEqual(listing(folder), content === undefined ? [] : ["mcp.json"]);
+      if (content !== undefined) assert.equal(readFileSync(file, "utf8"), content);
+    });
+  }
+});
+
+test("a link to a file in a folder that cannot be written to is refused and both are left as they are", { skip: isRoot }, async (t) => {
+  const { home, folder, file, env } = cursorHome(t);
+  const locked = realpathSync(tempDir(t));
+  const real = join(locked, "mcp.json");
+  writeFileSync(real, '{"mcpServers":{}}\n');
+  symlinkSync(real, file);
+  chmodSync(locked, 0o555);
+
+  const result = await runCli(["mcp", "install", "cursor"], { home, env }).finally(() => chmodSync(locked, 0o755));
+
+  assert.deepEqual(result, {
+    code: 1,
+    stdout: "",
+    stderr: `error: The folder ${locked} cannot be written to, so nothing was changed. Add this to mcpServers in ${file} by hand: ${ENTRY}\n`,
+    homeEntries: [".cursor"],
+  });
+  assert.equal(readlinkSync(file), real);
+  assert.equal(readFileSync(real, "utf8"), '{"mcpServers":{}}\n');
+  assert.deepEqual(listing(locked), ["mcp.json"]);
+  assert.deepEqual(listing(folder), ["mcp.json"]);
+});
+
+test("for the clients with their own command nothing in the home folder is read or written", async (t) => {
+  for (const client of ["claude-code", "codex", "vscode"]) {
+    await t.test(client, async (t) => {
+      const { env } = fakeClients(t, ["claude", "codex", "code"]);
+      const home = tempDir(t);
+      for (const name of [".claude.json", ".codex", ".vscode", ".cursor"]) execFileSync("mkfifo", [join(home, name)]);
+
+      const result = await runCli(["mcp", "install", client], { home, env });
+
+      assert.equal(result.code, 0);
+      assert.deepEqual(result.homeEntries.sort(), [".claude.json", ".codex", ".cursor", ".vscode"]);
+    });
+  }
 });
