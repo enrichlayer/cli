@@ -1,18 +1,19 @@
 {
   "name": "@enrichlayer/cli-v3",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command-line client for the Enrich Layer v3 API — person and company profiles, company search and logos, work email search and email validation",
   "type": "module",
   "bin": {
     "enrichlayer-v3": "build/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('build', { recursive: true, force: true })\" && tsc",
     "typecheck": "tsc --noEmit",
     "update-spec": "node scripts/update-spec.mjs",
     "gen:params": "node scripts/generate-params.mjs",
     "test": "npm run build && node --test test/*.test.mjs",
     "check:package": "node scripts/check-package.mjs",
+    "prepack": "npm run build",
     "prepublishOnly": "npm test"
   },
   "keywords": [
