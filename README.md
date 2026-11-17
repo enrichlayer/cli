@@ -116,12 +116,35 @@ On a machine with a screen it opens the sign-in page in the browser and prints t
 
 The sign-in is kept in `session.json` in the same folder as the key file, with mode 0600. A call stops with exit code 3 when other users can read it, when a link or a folder is in its place, or when it is damaged; the error says how to fix it. The CLI renews the sign-in by itself before it expires, and once more if the API rejects it.
 
+## MCP server
+
+`enrichlayer-v3 mcp install <client>` adds the hosted Enrich Layer v3 MCP server, `https://mcp.enrichlayer.com/v3/mcp`, to an MCP client under the name `enrichlayer-v3`. The client then signs in through the browser, so the command reads no API key and writes none.
+
+| Client | What the command does |
+|---|---|
+| `claude-code` | runs `claude mcp add --scope user --transport http enrichlayer-v3 https://mcp.enrichlayer.com/v3/mcp` |
+| `codex` | runs `codex mcp add enrichlayer-v3 --url https://mcp.enrichlayer.com/v3/mcp` |
+| `vscode` | runs `code --add-mcp` with the server as JSON; VS Code adds it to the user profile |
+| `cursor` | adds the entry to `mcpServers` in `~/.cursor/mcp.json` |
+
+```sh
+enrichlayer-v3 mcp install claude-code --dry-run
+```
+
+`--dry-run` prints the command that would be run, or the file and the entry that would be written, and changes nothing.
+
+For Claude Code, Codex and VS Code the client's own command must be installed; what that command prints is shown as it is. When the command is missing or the client refuses, for example because the name is taken, the CLI exits with 1 and prints the command to run by hand.
+
+Cursor's file is changed only when that is safe: the other servers and settings, the indent and the file mode stay as they were, and the file is replaced in one step. The CLI exits with 1 and leaves the file as it is when the folder `~/.cursor` does not exist, when the file is not plain JSON (comments included), or when it already has a different `enrichlayer-v3` entry; `--force` replaces that entry. A second run finds the entry and writes nothing.
+
+To remove the server, use the client itself, for example `claude mcp remove enrichlayer-v3`; for Cursor, delete the entry from `~/.cursor/mcp.json`. The local server with an API key and other clients are described in the [MCP server's README](https://github.com/enrichlayer/mcp#install).
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | the answer arrived, or `--dry-run` passed |
-| 1 | unexpected error |
+| 1 | unexpected error, or `mcp install` did not add the server |
 | 2 | wrong flags or values, including a request the API rejected as invalid (400) |
 | 3 | API key, sign-in or account: no key and no sign-in, a malformed key, a key file or a sign-in file that cannot be used, a rejected key or sign-in (401), a sign-in that was declined, expired or revoked, access denied or not enough credits (403) |
 | 4 | not found (404) |
