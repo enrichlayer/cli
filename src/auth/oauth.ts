@@ -24,9 +24,22 @@ export interface OAuthConfig {
   resource: string;
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+export function isAllowedIssuer(issuer: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(issuer);
+    return protocol === "https:" || (protocol === "http:" && LOOPBACK_HOSTS.has(hostname));
+  } catch {
+    return false;
+  }
+}
+
 export function oauthConfig(env: NodeJS.ProcessEnv = process.env): OAuthConfig {
+  const issuer = (env.ENRICHLAYER_AUTH_URL || AUTH_URL).replace(/\/+$/, "");
+  if (!isAllowedIssuer(issuer)) throw new OAuthError("ENRICHLAYER_AUTH_URL must start with https:// (http:// only for 127.0.0.1, localhost or ::1).");
   return {
-    issuer: (env.ENRICHLAYER_AUTH_URL || AUTH_URL).replace(/\/+$/, ""),
+    issuer,
     clientId: env.ENRICHLAYER_CLIENT_ID || CLIENT_ID,
     resource: env.ENRICHLAYER_RESOURCE || RESOURCE,
   };
@@ -54,31 +67,51 @@ export class OAuthError extends Error {
   }
 }
 
-const RELOGIN = "If the next command fails, run enrichlayer-v3 auth login.";
+export class SignInUnavailableError extends OAuthError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "SignInUnavailableError";
+  }
+}
+
+const TRY_LATER = "Try again in a few minutes.";
 
 export async function oauthPost(issuer: string, path: string, params: Record<string, string>): Promise<Response> {
+  let response: Response;
   try {
-    return await fetch(`${issuer}${path}`, {
+    response = await fetch(`${issuer}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", "User-Agent": USER_AGENT },
       body: new URLSearchParams(params),
+      redirect: "manual",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
-    // A refresh whose answer was lost may already have rotated the refresh token, so this is never
+    // A refresh whose answer was lost may already have rotated the refresh token, so a refresh is never
     // retried: sending the old refresh token again would revoke the grant.
-    throw new OAuthError(`Could not reach ${issuer}. ${RELOGIN}`, { cause: error });
+    throw new SignInUnavailableError(`Could not reach the sign-in server ${issuer}. ${TRY_LATER}`, { cause: error });
   }
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new OAuthError(`The sign-in server ${issuer} answered with a redirect, which the CLI does not follow. Check ENRICHLAYER_AUTH_URL.`);
+  }
+  if (response.status === 429 || response.status >= 500) {
+    await response.body?.cancel();
+    throw new SignInUnavailableError(`The sign-in server ${issuer} is not available right now (HTTP ${response.status}). ${TRY_LATER}`);
+  }
+  return response;
 }
+
+const UNREADABLE = `The sign-in server sent an answer that could not be read. ${TRY_LATER}`;
 
 export async function oauthJson(response: Response): Promise<Record<string, unknown>> {
   try {
     const data: unknown = await response.json();
     if (data && typeof data === "object" && !Array.isArray(data)) return data as Record<string, unknown>;
   } catch (error) {
-    throw new OAuthError(`The sign-in server sent an answer that could not be read. ${RELOGIN}`, { cause: error });
+    throw new SignInUnavailableError(UNREADABLE, { cause: error });
   }
-  throw new OAuthError(`The sign-in server sent an answer that could not be read. ${RELOGIN}`);
+  throw new SignInUnavailableError(UNREADABLE);
 }
 
 export async function readTokenResponse(response: Response, config: OAuthConfig, now = Date.now): Promise<OAuthTokens> {
@@ -96,7 +129,7 @@ export async function readTokenResponse(response: Response, config: OAuthConfig,
     typeof token_type !== "string" ||
     token_type.toLowerCase() !== "bearer"
   )
-    throw new OAuthError(`The sign-in server sent an incomplete token answer. ${RELOGIN}`);
+    throw new SignInUnavailableError(`The sign-in server sent an incomplete token answer. ${TRY_LATER}`);
   return { accessToken: access_token, refreshToken: refresh_token, expiresAt: now() + expires_in * 1000, ...config };
 }
 
@@ -128,18 +161,28 @@ export async function deviceLogin(config: OAuthConfig, { onCode, wait = sleep, n
   // RFC 8628 §3.2: 5 s when the server names no interval; never poll faster than that.
   let interval = Math.max(typeof data.interval === "number" && Number.isFinite(data.interval) ? data.interval * 1000 : 0, DEFAULT_POLL_MS);
   const deadline = now() + Math.min(data.expires_in * 1000, timeoutMs);
+  let failure: SignInUnavailableError | undefined;
   while (now() < deadline) {
     await wait(Math.min(interval, deadline - now()));
     if (now() >= deadline) break;
-    // The resource was bound when the code was issued; a pending code polled with `resource` is refused
-    // with invalid_target (measured against auth.enrichlayer.com, 2026-11-05).
-    const token = await oauthPost(config.issuer, "/token", {
-      client_id: config.clientId,
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      device_code: data.device_code,
-    });
+    let token: Response;
+    let error: unknown;
+    try {
+      // The resource was bound when the code was issued; a pending code polled with `resource` is refused
+      // with invalid_target (measured against auth.enrichlayer.com, 2026-11-05).
+      token = await oauthPost(config.issuer, "/token", {
+        client_id: config.clientId,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        device_code: data.device_code,
+      });
+      if (!token.ok) error = (await oauthJson(token)).error;
+    } catch (unavailable) {
+      if (!(unavailable instanceof SignInUnavailableError)) throw unavailable;
+      failure = unavailable;
+      continue;
+    }
     if (token.ok) return readTokenResponse(token, config, now);
-    const error = (await oauthJson(token)).error;
+    failure = undefined;
     if (error === "authorization_pending") continue;
     if (error === "slow_down") {
       interval += SLOW_DOWN_MS;
@@ -149,7 +192,7 @@ export async function deviceLogin(config: OAuthConfig, { onCode, wait = sleep, n
     if (error === "expired_token") throw new OAuthError("The code expired before it was approved. Run enrichlayer-v3 auth login again.");
     throw OAuthError.fromCode(error, "device_authorization_failed");
   }
-  throw new OAuthError("The code was not approved within 10 minutes. Run enrichlayer-v3 auth login again.");
+  throw failure ?? new OAuthError("The code was not approved within 10 minutes. Run enrichlayer-v3 auth login again.");
 }
 
 export class BrowserOpenError extends Error {
@@ -210,12 +253,14 @@ export async function browserLogin(config: OAuthConfig, { open, onUrl, timeoutMs
 
   let served = false;
   const server = createServer((req, res) => {
-    // Only the first request counts: a second callback cannot replace the first.
+    const callback = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (req.method !== "GET" || callback.pathname !== "/callback") return void res.writeHead(404, { Connection: "close" }).end();
+    // Only the first callback counts: a second callback cannot replace the first.
     if (served) return void res.writeHead(410, { Connection: "close" }).end();
     served = true;
     server.close();
     try {
-      const code = callbackCode(new URL(req.url ?? "/", "http://127.0.0.1"), req.method, state, config.issuer);
+      const code = callbackCode(callback, req.method, state, config.issuer);
       res.writeHead(200, { "Content-Type": "text/plain", Connection: "close" }).end("Signed in. Return to the terminal.");
       resolveCode(code);
     } catch (error) {

@@ -69,11 +69,13 @@ export async function login(noBrowser: boolean, deps: SignInDeps): Promise<void>
 
 export async function logout(deps: SignInDeps): Promise<void> {
   const line = await withCredentialLock(deps.lockDir, async () => {
-    const tokens = await deps.store.read();
-    if (!tokens) {
+    const stored = deps.store.state();
+    if (stored.status === "missing") return "No stored sign-in.";
+    if (stored.status === "unusable") {
       await deps.store.clear();
-      return "No stored sign-in.";
+      return "Signed out: the sign-in file could not be used and is deleted; nothing was revoked.";
     }
+    const { tokens } = stored;
     let revoked = false;
     try {
       revoked = await revokeTokens(tokens);
@@ -92,9 +94,9 @@ export async function logout(deps: SignInDeps): Promise<void> {
  * sign-in is what calls use. Never prints a token.
  */
 export async function signInStatus(deps: SignInDeps): Promise<boolean> {
-  if (!(await deps.store.read())) return false;
   let tokens: OAuthTokens;
   try {
+    if (!(await deps.store.read())) return false;
     tokens = await new SignInCredentials({ store: deps.store, lockDir: deps.lockDir, config: oauthConfig(deps.env) }).tokens();
   } catch (error) {
     deps.say(`Sign-in: not usable: ${error instanceof Error ? error.message : String(error)}`);
@@ -102,6 +104,8 @@ export async function signInStatus(deps: SignInDeps): Promise<boolean> {
   }
   const key = deps.keyInUse();
   const use = key ? `not in use: ${key} takes precedence` : "in use";
-  deps.say(`Sign-in: ${describe(tokens)}, access token valid until ${new Date(tokens.expiresAt).toISOString()} (${use})`);
+  const until = new Date(tokens.expiresAt).toISOString();
+  const access = tokens.expiresAt > Date.now() ? `access token valid until ${until}` : `access token expired at ${until}, renewed on the next call`;
+  deps.say(`Sign-in: ${describe(tokens)}, ${access} (${use})`);
   return key === null;
 }

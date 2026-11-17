@@ -1,9 +1,11 @@
 import { closeSync, existsSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { SignInUnavailableError } from "./oauth.js";
 import { ensurePrivateDir } from "./private-dir.js";
 
-const ABANDONED_MS = 600_000;
+const ABANDONED_MS = 60_000;
+const ANNOUNCE_AFTER_MS = 1_000;
 
 type Holder = "alive" | "dead" | "unknown";
 
@@ -27,7 +29,7 @@ function holder(path: string): Holder {
 
 /**
  * Remove a lock whose holder has exited at once, one without a pid after staleMs, and any lock after
- * ten minutes, whoever holds it.
+ * a minute, whoever holds it.
  */
 function breakIfStale(path: string, staleMs: number): void {
   try {
@@ -48,14 +50,14 @@ function breakIfStale(path: string, staleMs: number): void {
 export async function withCredentialLock<T>(
   dir: string,
   action: () => Promise<T>,
-  staleMs = 120_000,
-  waitMs = staleMs + 15_000,
+  staleMs = 10_000,
+  waitMs = ABANDONED_MS + 15_000,
   onWait: (path: string) => void = (path) => process.stderr.write(`Waiting for another enrichlayer-v3 process that holds ${path}\n`),
 ): Promise<T> {
   ensurePrivateDir(dir);
   const path = join(dir, "session.lock");
-  const deadline = Date.now() + waitMs;
-  let waited = false;
+  const started = Date.now();
+  let announced = false;
   for (;;) {
     let fd: number;
     try {
@@ -63,34 +65,27 @@ export async function withCredentialLock<T>(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       breakIfStale(path, staleMs);
-      if (!waited && existsSync(path)) onWait(path);
-      waited = true;
-      if (Date.now() >= deadline) throw new Error(`Timed out waiting for the sign-in lock ${path}`);
+      if (!announced && Date.now() - started >= ANNOUNCE_AFTER_MS && existsSync(path)) {
+        onWait(path);
+        announced = true;
+      }
+      if (Date.now() - started >= waitMs)
+        throw new SignInUnavailableError(`Another enrichlayer-v3 process has held ${path} for ${Math.round(waitMs / 1000)} s. Try again in a minute.`);
       await sleep(50);
       continue;
     }
 
     const inode = statSync(path).ino;
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      closeSync(fd);
-      if (existsSync(path) && statSync(path).ino === inode) unlinkSync(path);
+    let signalled: number | undefined;
+    const deferTo = (code: number) => () => {
+      signalled ??= code;
     };
-    const exitOn = (code: number) => () => {
-      try {
-        release();
-      } finally {
-        process.exit(code);
-      }
-    };
-    const interrupt = exitOn(130);
-    const terminate = exitOn(143);
-    const hangUp = exitOn(129);
-    process.once("SIGINT", interrupt);
-    process.once("SIGTERM", terminate);
-    process.once("SIGHUP", hangUp);
+    const interrupt = deferTo(130);
+    const terminate = deferTo(143);
+    const hangUp = deferTo(129);
+    process.on("SIGINT", interrupt);
+    process.on("SIGTERM", terminate);
+    process.on("SIGHUP", hangUp);
     try {
       writeFileSync(fd, String(process.pid));
       return await action();
@@ -98,7 +93,9 @@ export async function withCredentialLock<T>(
       process.off("SIGINT", interrupt);
       process.off("SIGTERM", terminate);
       process.off("SIGHUP", hangUp);
-      release();
+      closeSync(fd);
+      if (existsSync(path) && statSync(path).ino === inode) unlinkSync(path);
+      if (signalled !== undefined) process.exit(signalled);
     }
   }
 }

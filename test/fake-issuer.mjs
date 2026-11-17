@@ -8,6 +8,8 @@ import { CredentialStore } from "../build/auth/token-store.js";
 export const CLIENT_ID = "enrichlayer-cli";
 export const RESOURCE = "https://api.enrichlayer.com";
 
+const FAILURES = { drop: "drop", 503: [503, "<html>Service Unavailable</html>"], html: [400, "<html>Bad Request</html>"] };
+
 export function accessToken(n) {
   const claims = { sub: "account-123", client_id: CLIENT_ID, grant_id: "grant-1", n };
   return `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig-${n}`;
@@ -25,7 +27,9 @@ export async function startIssuer(t) {
     refreshToken: "refresh-0",
     accessToken: accessToken(0),
     refreshDelayMs: 0,
+    refreshFailure: undefined,
     revokeStatus: 200,
+    userCode: "ABCD-EFGH",
     deviceErrors: [],
     deviceInterval: 1,
     deviceExpiresIn: 600,
@@ -44,7 +48,7 @@ export async function startIssuer(t) {
         200,
         {
           device_code: "device-secret",
-          user_code: "ABCD-EFGH",
+          user_code: state.userCode,
           verification_uri: state.verificationUri ?? `${issuer.url}/device`,
           verification_uri_complete: `${issuer.url}/device?user_code=ABCD-EFGH`,
           interval: state.deviceInterval,
@@ -59,6 +63,8 @@ export async function startIssuer(t) {
     const grant = params.get("grant_type");
     if (grant === "refresh_token") {
       state.refreshCount++;
+      const failure = FAILURES[state.refreshFailure];
+      if (failure) return failure;
       if (state.revoked || params.get("refresh_token") !== state.refreshToken) {
         // Reuse of a rotated refresh token revokes the whole grant.
         state.revoked = true;
@@ -77,6 +83,7 @@ export async function startIssuer(t) {
     if (grant === "urn:ietf:params:oauth:grant-type:device_code") {
       if (params.has("resource")) return [400, { error: "invalid_target" }];
       const error = state.deviceErrors.shift();
+      if (FAILURES[error]) return FAILURES[error];
       if (error) return [400, { error }];
       return params.get("device_code") === "device-secret" ? [200, pair()] : [400, { error: "invalid_grant" }];
     }
@@ -89,7 +96,10 @@ export async function startIssuer(t) {
     const url = new URL(req.url, "http://127.0.0.1");
     const params = req.method === "GET" ? url.searchParams : new URLSearchParams(body);
     state.requests.push({ path: url.pathname, params });
-    const [status, value] = await handle(url.pathname, params);
+    const reply = await handle(url.pathname, params);
+    if (reply === "drop") return req.socket.destroy();
+    const [status, value] = reply;
+    if (typeof value === "string") return res.writeHead(status, { "Content-Type": "text/html" }).end(value);
     res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(value));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -116,13 +126,29 @@ export async function startIssuer(t) {
   return issuer;
 }
 
-export const noKeychain = async () => {
-  throw new Error("no keychain in tests");
-};
+export async function startRecorder(t, redirectTo) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push({ path: new URL(req.url, "http://127.0.0.1").pathname, body });
+    if (redirectTo) return res.writeHead(307, { Location: `${redirectTo}${req.url}` }).end();
+    res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "invalid_grant" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(resolve);
+      }),
+  );
+  return { url: `http://127.0.0.1:${server.address().port}`, requests };
+}
 
 /** A file store in a fresh directory that also holds the lock. */
 export function tempStore(t) {
   const dir = mkdtempSync(join(tmpdir(), "enrichlayer-cli-store-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return { dir, store: new CredentialStore(dir, noKeychain) };
+  return { dir, store: new CredentialStore(dir) };
 }

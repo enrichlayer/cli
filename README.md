@@ -112,9 +112,9 @@ The key file is `credentials.json` in `$XDG_CONFIG_HOME/enrichlayer-v3` when `XD
 
 On a machine with a screen it opens the sign-in page in the browser and prints the same link, in case the browser does not open or opens the wrong profile; the browser comes back to the CLI on a temporary address on 127.0.0.1 that only this login accepts. Over SSH, in CI, in a container, on Linux without a display, or with `auth login --no-browser`, it prints a link and a code instead: open https://auth.enrichlayer.com/device on any device and enter the code. Either way the CLI waits up to 10 minutes for the approval.
 
-`auth status` shows the stored sign-in below the key lines: the account, the client, the grant, until when the current access token is valid, and whether the sign-in is in use or a key takes precedence. `auth logout` revokes the sign-in at auth.enrichlayer.com and deletes it from this machine, even when the revocation fails. None of them prints a token.
+`auth status` shows the stored sign-in below the key lines: the account, the client, the grant, until when the current access token is valid, and whether the sign-in is in use or a key takes precedence. `auth logout` revokes the sign-in at auth.enrichlayer.com and deletes it from this machine, even when the revocation fails; a damaged sign-in file, or a link or a folder in its place, is deleted without revoking anything. None of them prints a token.
 
-The sign-in is kept in the operating system's keychain: Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux, never the Linux kernel keyring, which forgets it at the end of the session. Where there is no keychain, as on most Linux servers and in containers, it goes to `session.json` in the same folder as the key file, with mode 0600; `ENRICHLAYER_CREDENTIAL_STORE=file` always uses that file. The CLI renews the sign-in by itself before it expires, and once more if the API rejects it.
+The sign-in is kept in `session.json` in the same folder as the key file, with mode 0600. A call stops with exit code 3 when other users can read it, when a link or a folder is in its place, or when it is damaged; the error says how to fix it. The CLI renews the sign-in by itself before it expires, and once more if the API rejects it.
 
 ## Exit codes
 
@@ -123,15 +123,15 @@ The sign-in is kept in the operating system's keychain: Keychain on macOS, Crede
 | 0 | the answer arrived, or `--dry-run` passed |
 | 1 | unexpected error |
 | 2 | wrong flags or values, including a request the API rejected as invalid (400) |
-| 3 | API key, sign-in or account: no key and no sign-in, a malformed key, a key file that cannot be used, a rejected key or sign-in (401), a sign-in that failed or could not be renewed, access denied or not enough credits (403) |
+| 3 | API key, sign-in or account: no key and no sign-in, a malformed key, a key file or a sign-in file that cannot be used, a rejected key or sign-in (401), a sign-in that was declined, expired or revoked, access denied or not enough credits (403) |
 | 4 | not found (404) |
-| 5 | not now: no fresh enough copy (409), rate limit (429), the API unavailable (5xx) or not reachable |
+| 5 | not now: no fresh enough copy (409), rate limit (429), the API or the sign-in server unavailable (5xx) or not reachable |
 | 6 | the answer did not arrive (timeout or a broken connection); the call may still be charged |
 | 130 | stopped with Ctrl-C |
 
 ## Dry run
 
-`--dry-run` makes every check of a real call, the API key included, and prints the request as JSON instead of sending it, so nothing is charged. The key itself is not printed: the `Authorization` header shows where it came from.
+`--dry-run` makes every check of a real call, the API key included, and prints the request as JSON instead of sending it, so nothing is charged. The key itself is not printed: the `Authorization` header shows where it came from. With a sign-in it checks the stored sign-in without renewing it and without asking the sign-in server, so a sign-in that was revoked still passes.
 
 ```sh
 enrichlayer-v3 person --profile williamhgates --dry-run
@@ -143,7 +143,7 @@ enrichlayer-v3 person --profile williamhgates --dry-run
 
 Ctrl-C stops waiting and exits with 130. The CLI stops waiting by itself after about 5 minutes and exits with 6. In both cases the call may still be charged: to get the copy that was saved in the meantime, run the same command without `--max-age-seconds` instead of repeating a live lookup.
 
-A call is retried only when the API answers 429 or 5xx, at most twice, and never after a timeout or a broken connection.
+A call is retried only when the API answers 429 or 5xx, at most twice, and never after a timeout or a broken connection. With a sign-in, a 401 renews the sign-in and repeats the call once.
 
 ## Environment
 
@@ -152,8 +152,7 @@ A call is retried only when the API answers 429 or 5xx, at most twice, and never
 | `ENRICHLAYER_API_KEY` | the API key, when `--api-key` is not given; an empty value counts as unset |
 | `ENRICHLAYER_API_BASE_URL` | the API host, `https://api.enrichlayer.com` by default |
 | `XDG_CONFIG_HOME` | where the key file is kept, see [Saving the key](#saving-the-key) |
-| `ENRICHLAYER_CREDENTIAL_STORE` | `file` keeps the sign-in in `session.json` instead of the keychain, see [Signing in](#signing-in) |
-| `ENRICHLAYER_AUTH_URL` | the sign-in server, `https://auth.enrichlayer.com` by default |
+| `ENRICHLAYER_AUTH_URL` | the sign-in server, `https://auth.enrichlayer.com` by default; an `https` address, or `http` on 127.0.0.1, localhost or ::1 |
 
 ## Development
 

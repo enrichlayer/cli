@@ -2,11 +2,12 @@ import { dirname } from "node:path";
 import { apiKeyCredentials, type Credentials, DASHBOARD_URL, isKeyInEnv, SIGN_IN_SOURCE } from "./api-key.js";
 import { keyFilePath, readKeyFile } from "./key-file.js";
 import { withCredentialLock } from "./lock.js";
-import { type OAuthConfig, OAuthError, type OAuthTokens, oauthConfig, oauthPost, readTokenResponse, SCOPE } from "./oauth.js";
+import { type OAuthConfig, OAuthError, type OAuthTokens, oauthConfig, oauthJson, oauthPost, readTokenResponse, SCOPE } from "./oauth.js";
 import { CredentialStore, type TokenStore } from "./token-store.js";
 
 /** Refresh this long before the access token expires, so it does not expire on the way. */
 const REFRESH_MARGIN_MS = 60_000;
+const SIGN_IN_AGAIN = "Run enrichlayer-v3 auth login to sign in again.";
 
 export class NotSignedInError extends Error {
   constructor() {
@@ -48,8 +49,6 @@ export class SignInCredentials implements Credentials {
   async tokens(): Promise<OAuthTokens> {
     const tokens = await this.store.read();
     if (!tokens) throw new NotSignedInError();
-    if (!Number.isFinite(tokens.expiresAt) || !tokens.accessToken || !tokens.refreshToken)
-      throw new OAuthError("The stored sign-in is damaged. Run enrichlayer-v3 auth login.");
     if (tokens.issuer !== this.config.issuer || tokens.clientId !== this.config.clientId || tokens.resource !== this.config.resource)
       throw new OAuthError("The stored sign-in is for another sign-in server, client or API. Run enrichlayer-v3 auth login.");
     return tokens;
@@ -93,6 +92,11 @@ export class SignInCredentials implements Credentials {
           grant_type: "refresh_token",
           refresh_token: current.refreshToken,
         });
+        if (!response.ok) {
+          const { error: code } = await oauthJson(response);
+          if (code === "invalid_grant") throw new OAuthError(`The sign-in has expired or was revoked. ${SIGN_IN_AGAIN}`);
+          throw new OAuthError(`${OAuthError.fromCode(code, "token_request_failed").message}. ${SIGN_IN_AGAIN}`);
+        }
         const next = await readTokenResponse(response, { issuer, clientId, resource }, this.now);
         // The rotated pair must be saved before another process may refresh.
         try {
@@ -129,7 +133,7 @@ export interface ResolveOptions {
   lockDir?: string;
 }
 
-/** The folder of the key file: the sign-in, when it is not in the keychain, and its lock live beside it. */
+/** The folder of the key file: the sign-in and its lock live beside it. */
 export function sessionDir(env: NodeJS.ProcessEnv = process.env): string {
   return dirname(keyFilePath({ env }));
 }

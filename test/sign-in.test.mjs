@@ -1,22 +1,21 @@
-import { headers, runCli, startApi, testClient } from "./helpers.mjs";
+import { headers, runCli, startApi, startCli, testClient } from "./helpers.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ENTRY_OPTIONS, openKeychain } from "../build/auth/keychain.js";
+import { setTimeout as sleep } from "node:timers/promises";
 import { withCredentialLock } from "../build/auth/lock.js";
-import { deviceLogin, selectLoginMethod } from "../build/auth/oauth.js";
+import { browserLogin, deviceLogin, isAllowedIssuer, selectLoginMethod } from "../build/auth/oauth.js";
 import { SignInCredentials } from "../build/auth/sign-in.js";
 import { CredentialStore } from "../build/auth/token-store.js";
 import { V3ApiError } from "../build/client.js";
 import { describeFailure } from "../build/errors.js";
 import { login, logout, signInStatus } from "../build/sign-in-commands.js";
 import { saveKeyFile } from "../build/auth/key-file.js";
-import { noKeychain, startIssuer, tempStore } from "./fake-issuer.mjs";
-import { writePrivateJson } from "../build/auth/private-dir.js";
+import { startIssuer, startRecorder, tempStore } from "./fake-issuer.mjs";
 
 function deps(issuer, { dir, store }, overrides = {}) {
   const printed = [];
@@ -68,7 +67,7 @@ function emptyHome(t) {
 /** A HOME whose file store already holds the issuer's current pair. */
 async function signedInHome(t, issuer, expiresInMs) {
   const home = emptyHome(t);
-  await new CredentialStore(folder(home), noKeychain).write(issuer.tokens(expiresInMs));
+  await new CredentialStore(folder(home)).write(issuer.tokens(expiresInMs));
   return home;
 }
 
@@ -441,7 +440,7 @@ test("G: auth status and a failed call print no token on the command line", asyn
   const [key, keyFile, signIn] = status.stdout.split("\n");
   assert.deepEqual([key, keyFile], ["Key in use: none", `Key file: ${file} (not saved)`]);
   assert.match(signIn, /^Sign-in: account account-123, client enrichlayer-cli, grant grant-1, access token valid until .* \(in use\)$/);
-  assert.deepEqual([call.code, call.stdout, call.stderr], [3, "", "error: Sign-in failed: invalid_grant\n"]);
+  assert.deepEqual([call.code, call.stdout, call.stderr], [3, "", "error: The sign-in has expired or was revoked. Run enrichlayer-v3 auth login to sign in again.\n"]);
   assert.equal(api.requests.length, 0);
   const printed = status.stdout + status.stderr + call.stdout + call.stderr;
   for (const secret of [accessToken, accessToken.split(".")[2], refreshToken]) assert.equal(printed.includes(secret), false, secret);
@@ -467,25 +466,18 @@ test("auth logout and auth status without any key or sign-in", async (t) => {
   const call = await cliIn(home, ["company-search", "--q", "acme"]);
 
   assert.deepEqual([out.code, out.stdout, out.stderr], [0, "No stored sign-in.\n", ""]);
+  assert.equal(existsSync(join(folder(home), "session.json")), false);
   assert.deepEqual([status.code, status.stdout], [3, `Key in use: none\nKey file: ${file} (not saved)\n`]);
   assert.match(call.stderr, /^error: Not signed in and no API key\. Sign in with enrichlayer-v3 auth login, or save a key with enrichlayer-v3 auth save/);
 });
 
-test("the sign-in file is session.json beside the key file, readable by its owner only, and ENRICHLAYER_CREDENTIAL_STORE=file keeps the keychain out", async (t) => {
+test("the sign-in file is session.json beside the key file, readable by its owner only", async (t) => {
   const issuer = await startIssuer(t);
   const home = await signedInHome(t, issuer);
   const dir = folder(home);
 
   assert.equal(statSync(join(dir, "session.json")).mode & 0o777, 0o600);
   assert.equal(statSync(dir).mode & 0o777, 0o700);
-  const keychain = new Map();
-  const entry = async () => ({ getPassword: () => keychain.get("v") ?? null, setPassword: (v) => keychain.set("v", v), deletePassword: () => keychain.delete("v") });
-  const store = new CredentialStore(mkdtempSync(join(tmpdir(), "enrichlayer-cli-kc-")), entry);
-  await store.write(issuer.tokens());
-  assert.equal(JSON.parse(keychain.get("v")).refreshToken, "refresh-0");
-  await store.clear();
-  assert.equal(await store.read(), null);
-  rmSync(store.dir, { recursive: true, force: true });
 });
 
 test("the login method is chosen as the v2 CLI chooses it", () => {
@@ -513,11 +505,11 @@ test("--dry-run with a stored sign-in that is about to expire does not refresh i
   assert.equal(result.code, 0);
   assert.equal(JSON.parse(result.stdout).headers.Authorization, "Bearer <the stored sign-in>");
   assert.equal(issuer.state.requests.length, 0);
-  const stored = await new CredentialStore(folder(home), noKeychain).read();
+  const stored = await new CredentialStore(folder(home)).read();
   assert.equal(stored.refreshToken, "refresh-0");
 });
 
-test("a lock whose holder has exited is broken at once; a live or still unwritten one is waited for", async (t) => {
+test("a lock whose holder has exited is broken at once; a live or still unwritten one is waited for, and the wait is shown only after a second", async (t) => {
   const { dir } = tempStore(t);
   const lock = join(dir, "session.lock");
   const exited = spawnSync(process.execPath, ["-e", ""]).pid;
@@ -528,45 +520,404 @@ test("a lock whose holder has exited is broken at once; a live or still unwritte
   assert.equal(await withCredentialLock(dir, async () => "got it", 120_000, 2_000, (path) => waits.push(path)), "got it");
   assert.ok(Date.now() - started < 1_000);
 
-  for (const holder of [String(process.pid), ""]) {
+  const failures = [];
+  for (const [holder, waitMs] of [
+    [String(process.pid), 1_200],
+    ["", 600],
+  ]) {
     writeFileSync(lock, holder);
-    await assert.rejects(withCredentialLock(dir, async () => "got it", 120_000, 300, (path) => waits.push(path)), /Timed out waiting for the sign-in lock/);
+    failures.push(await withCredentialLock(dir, async () => "got it", 120_000, waitMs, (path) => waits.push(path)).catch((error) => error));
   }
-  assert.deepEqual(waits, [lock, lock], "one line per wait for a lock that is really held");
+  const timedOut = ["SignInUnavailableError", `Another enrichlayer-v3 process has held ${lock} for 1 s. Try again in a minute.`];
+  assert.deepEqual(
+    failures.map((error) => [error.name, error.message]),
+    [timedOut, timedOut],
+  );
+  assert.equal(describeFailure(failures[0], { keySource: "the stored sign-in", hasMaxAgeSeconds: false }).exitCode, 5);
+  assert.deepEqual(waits, [lock], "one line, and only for a wait longer than a second");
 });
 
-test("a logout the keychain could not take is remembered by the file", async (t) => {
+function canConnect(host, port) {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("error", () => resolve(false));
+  });
+}
+
+const CALL = ["company-search", "--q", "acme"];
+const NOT_REGULAR = (file) => `error: The sign-in file ${file} is not a regular file. Remove it and sign in again with enrichlayer-v3 auth login.\n`;
+const DAMAGED = () => "error: The stored sign-in is damaged. Run enrichlayer-v3 auth login.\n";
+
+test("a sign-in file that others can read, a link, a FIFO or a damaged one stops the call with exit code 3 and sends nothing", { timeout: 30_000 }, async (t) => {
   const issuer = await startIssuer(t);
-  const { dir } = tempStore(t);
-  const old = JSON.stringify(issuer.tokens());
-  const stuck = async () => ({ getPassword: () => old, setPassword: () => {}, deletePassword: () => { throw new Error("locked"); } });
-  const store = new CredentialStore(dir, stuck);
+  const api = await startApi(() => ({ body: {} }));
+  t.after(api.close);
+  const env = { ENRICHLAYER_AUTH_URL: issuer.url, ENRICHLAYER_API_BASE_URL: api.url };
+  const cases = [
+    [(file) => chmodSync(file, 0o644), (file) => `error: The sign-in file ${file} can be read by other users (mode 0644). Run chmod 600 ${file}, or sign in again with enrichlayer-v3 auth login.\n`],
+    [(file, home) => (renameSync(file, join(home, "elsewhere.json")), symlinkSync(join(home, "elsewhere.json"), file)), NOT_REGULAR],
+    [(file) => (unlinkSync(file), spawnSync("mkfifo", [file])), NOT_REGULAR],
+    [(file) => writeFileSync(file, "{"), DAMAGED],
+    [(file) => writeFileSync(file, JSON.stringify({ ...issuer.tokens(), accessToken: 7 })), DAMAGED],
+    [(file) => writeFileSync(file, JSON.stringify({ ...issuer.tokens(), issuer: "http://auth.example.com" })), DAMAGED],
+  ];
 
-  await store.clear();
+  const results = [];
+  for (const [spoil, message] of cases) {
+    const home = await signedInHome(t, issuer);
+    const file = join(folder(home), "session.json");
+    spoil(file, home);
+    const call = await cliIn(home, CALL, env);
+    results.push([[call.code, call.stdout, call.stderr], [3, "", message(file)]]);
+  }
 
-  assert.equal(await store.read(), null);
-  writePrivateJson(store.file, { oauth: null });
-  assert.equal(await new CredentialStore(dir, stuck).read(), null);
+  assert.deepEqual(
+    results.map(([got]) => got),
+    results.map(([, expected]) => expected),
+  );
+  assert.deepEqual([api.requests.length, issuer.state.requests.length], [0, 0]);
 });
 
-test("the keychain entry is pinned to the Secret Service on Linux, and a refusing keyring falls back to the file", async (t) => {
-  const made = [];
-  class Entry {
-    constructor(...args) {
-      made.push(args);
-      throw new Error("no Secret Service");
-    }
-  }
-  const load = async () => ({ Entry });
-
-  await assert.rejects(openKeychain({}, load), /no Secret Service/);
-  assert.deepEqual(made, [["enrichlayer-v3", "oauth", { linux: { store: "secret-service" } }]]);
-  assert.deepEqual(ENTRY_OPTIONS, { linux: { store: "secret-service" } });
-
+test("auth logout revokes and deletes a sign-in file others can read, and deletes a link or a damaged file without revoking", async (t) => {
   const issuer = await startIssuer(t);
+  const env = { ENRICHLAYER_AUTH_URL: issuer.url };
+  const exposed = await signedInHome(t, issuer);
+  chmodSync(join(folder(exposed), "session.json"), 0o644);
+  const linked = await signedInHome(t, issuer);
+  const target = join(linked, "elsewhere.json");
+  renameSync(join(folder(linked), "session.json"), target);
+  symlinkSync(target, join(folder(linked), "session.json"));
+  const damaged = await signedInHome(t, issuer);
+  writeFileSync(join(folder(damaged), "session.json"), "{");
+
+  const results = [];
+  for (const home of [exposed, linked, damaged]) results.push(await cliIn(home, ["auth", "logout"], env));
+
+  const deleted = [0, "Signed out: the sign-in file could not be used and is deleted; nothing was revoked.\n", ""];
+  assert.deepEqual(
+    results.map((r) => [r.code, r.stdout, r.stderr]),
+    [[0, "Signed out: the sign-in is revoked and deleted.\n", ""], deleted, deleted],
+  );
+  assert.deepEqual(
+    issuer.state.requests.filter((r) => r.path === "/token/revocation").map((r) => r.params.get("token")),
+    ["refresh-0"],
+  );
+  assert.deepEqual(
+    [exposed, linked, damaged].map((home) => existsSync(join(folder(home), "session.json"))),
+    [false, false, false],
+  );
+  assert.equal(readFileSync(target, "utf8").includes("refresh-0"), true);
+});
+
+test("a refresh exits with 5 when the sign-in server cannot be reached, fails or sends an answer that cannot be read, and with 3 when the sign-in was revoked", async (t) => {
+  const results = [];
+  for (const failure of ["drop", 503, "html", "revoked"]) {
+    const issuer = await startIssuer(t);
+    const home = await signedInHome(t, issuer, 1_000);
+    if (failure === "revoked") issuer.state.revoked = true;
+    else issuer.state.refreshFailure = failure;
+    const api = await startApi(() => ({ body: {} }));
+    t.after(api.close);
+
+    const call = await cliIn(home, CALL, { ENRICHLAYER_AUTH_URL: issuer.url, ENRICHLAYER_API_BASE_URL: api.url });
+
+    results.push({ got: [call.code, call.stderr, api.requests.length], url: issuer.url });
+  }
+
+  assert.deepEqual(
+    results.map(({ got }) => got),
+    [
+      [5, `error: Could not reach the sign-in server ${results[0].url}. Try again in a few minutes.\n`, 0],
+      [5, `error: The sign-in server ${results[1].url} is not available right now (HTTP 503). Try again in a few minutes.\n`, 0],
+      [5, "error: The sign-in server sent an answer that could not be read. Try again in a few minutes.\n", 0],
+      [3, "error: The sign-in has expired or was revoked. Run enrichlayer-v3 auth login to sign in again.\n", 0],
+    ],
+  );
+});
+
+test("device polling goes on after a broken connection, a 503 or an answer that cannot be read", async (t) => {
+  const issuer = await startIssuer(t);
+  issuer.state.deviceErrors = ["drop", "503", "html", "authorization_pending"];
+  const waits = [];
+
+  const tokens = await deviceLogin(issuer.config(), { onCode: () => {}, wait: async (ms) => waits.push(ms) });
+
+  assert.deepEqual(waits, [5000, 5000, 5000, 5000, 5000]);
+  assert.equal(tokens.refreshToken, "refresh-0");
+});
+
+test("Ctrl-C while the sign-in is renewed waits until the new pair is stored and the lock released, then exits with 130", async (t) => {
+  const issuer = await startIssuer(t);
+  issuer.state.refreshDelayMs = 1_000;
+  const home = await signedInHome(t, issuer, 1_000);
+  const api = await startApi(() => ({ body: {} }));
+  t.after(api.close);
+  const env = { ENRICHLAYER_AUTH_URL: issuer.url, ENRICHLAYER_API_BASE_URL: api.url };
+
+  const { child, done } = startCli(CALL, { home, xdg: null, env });
+  while (issuer.state.refreshCount === 0) await sleep(10);
+  child.kill("SIGINT");
+  child.kill("SIGINT");
+  const interrupted = await done;
+  issuer.state.refreshDelayMs = 0;
+  const stored = await new CredentialStore(folder(home)).read();
+  const next = await cliIn(home, CALL, env);
+
+  assert.equal(interrupted.code, 130);
+  assert.deepEqual([stored.refreshToken, issuer.state.revoked, existsSync(join(folder(home), "session.lock"))], ["refresh-1", false, false]);
+  assert.equal(next.code, 0);
+  assert.deepEqual(
+    api.requests.map((r) => r.headers.authorization),
+    [`Bearer ${issuer.state.accessToken}`],
+  );
+});
+
+test("the browser login listens on 127.0.0.1 only", async (t) => {
+  const issuer = await startIssuer(t);
+  const local = tempStore(t);
+  const external = Object.values(networkInterfaces())
+    .flat()
+    .find((address) => address.family === "IPv4" && !address.internal)?.address;
+  const hosts = external ? ["::1", external] : ["::1"];
+  const reached = [];
+  const follow = browser(issuer, []);
+  const open = async (link) => {
+    const port = Number(new URL(new URL(link).searchParams.get("redirect_uri")).port);
+    for (const host of hosts) reached.push([host, await canConnect(host, port)]);
+    await follow(link);
+  };
+  const { deps: d } = deps(issuer, local, { method: () => "browser", open });
+
+  await login(false, d);
+
+  assert.deepEqual(
+    reached,
+    hosts.map((host) => [host, false]),
+  );
+});
+
+test("a stored sign-in is not used, and nothing is sent, after ENRICHLAYER_AUTH_URL, ENRICHLAYER_CLIENT_ID or ENRICHLAYER_RESOURCE changes", async (t) => {
+  const issuer = await startIssuer(t);
+  const other = await startRecorder(t);
+  const api = await startApi(() => ({ body: {} }));
+  t.after(api.close);
+  const base = { ENRICHLAYER_AUTH_URL: issuer.url, ENRICHLAYER_API_BASE_URL: api.url };
+
+  const results = [];
+  for (const change of [{ ENRICHLAYER_AUTH_URL: other.url }, { ENRICHLAYER_CLIENT_ID: "another-client" }, { ENRICHLAYER_RESOURCE: "https://api.example.com" }]) {
+    const home = await signedInHome(t, issuer, 1_000);
+    const call = await cliIn(home, CALL, { ...base, ...change });
+    results.push([call.code, call.stdout, call.stderr]);
+  }
+
+  const refused = [3, "", "error: The stored sign-in is for another sign-in server, client or API. Run enrichlayer-v3 auth login.\n"];
+  assert.deepEqual(results, [refused, refused, refused]);
+  assert.deepEqual([other.requests.length, issuer.state.requests.length, api.requests.length], [0, 0, 0]);
+});
+
+test("a request to another path of the browser login listener gets 404 and does not end the login", async (t) => {
+  const issuer = await startIssuer(t);
+  const local = tempStore(t);
+  const statuses = [];
+  const follow = browser(issuer, []);
+  const open = async (link) => {
+    const callback = new URL(new URL(link).searchParams.get("redirect_uri"));
+    const stray = await fetch(`${callback.origin}/favicon.ico`);
+    statuses.push(stray.status);
+    await stray.text();
+    await follow(link);
+  };
+  const { deps: d, printed } = deps(issuer, local, { method: () => "browser", open });
+
+  await login(false, d);
+
+  assert.deepEqual(statuses, [404]);
+  assert.deepEqual(printed, ["Signed in: account account-123, client enrichlayer-cli, grant grant-1."]);
+});
+
+test("ENRICHLAYER_AUTH_URL must be https, or http on 127.0.0.1, localhost or ::1", async (t) => {
+  const urls = [
+    ["https://auth.example.com", true],
+    ["http://127.0.0.1:8080", true],
+    ["http://localhost:9", true],
+    ["http://[::1]:9", true],
+    ["http://auth.example.com", false],
+    ["ftp://auth.example.com", false],
+    ["auth.example.com", false],
+  ];
+  const home = emptyHome(t);
+
+  const result = await cliIn(home, ["auth", "login", "--no-browser"], { ENRICHLAYER_AUTH_URL: "http://auth.example.com" });
+
+  assert.deepEqual(
+    urls.map(([url]) => [url, isAllowedIssuer(url)]),
+    urls,
+  );
+  assert.deepEqual([result.code, result.stdout, result.stderr], [3, "", "error: ENRICHLAYER_AUTH_URL must start with https:// (http:// only for 127.0.0.1, localhost or ::1).\n"]);
+});
+
+test("a redirect from the sign-in server is not followed", async (t) => {
+  const issuer = await startIssuer(t);
+  const sink = await startRecorder(t);
+  const redirector = await startRecorder(t, sink.url);
+  const api = await startApi(() => ({ body: {} }));
+  t.after(api.close);
+  const home = emptyHome(t);
+  await new CredentialStore(folder(home)).write({ ...issuer.tokens(1_000), issuer: redirector.url });
+
+  const call = await cliIn(home, CALL, { ENRICHLAYER_AUTH_URL: redirector.url, ENRICHLAYER_API_BASE_URL: api.url });
+
+  assert.deepEqual(
+    [call.code, call.stderr],
+    [3, `error: The sign-in server ${redirector.url} answered with a redirect, which the CLI does not follow. Check ENRICHLAYER_AUTH_URL.\n`],
+  );
+  assert.deepEqual([redirector.requests.map((r) => r.path), sink.requests.length, api.requests.length], [["/token"], 0, 0]);
+});
+
+test("a lock older than a minute is broken whoever holds it, and one without a pid after ten seconds", async (t) => {
   const { dir } = tempStore(t);
-  const store = new CredentialStore(dir, () => openKeychain({}, load));
-  await store.write(issuer.tokens());
-  assert.equal(statSync(store.file).mode & 0o777, 0o600);
-  assert.equal((await store.read()).refreshToken, "refresh-0");
+  const lock = join(dir, "session.lock");
+
+  const got = [];
+  for (const [holder, ageMs] of [
+    [String(process.pid), 61_000],
+    ["", 11_000],
+  ]) {
+    writeFileSync(lock, holder);
+    const when = (Date.now() - ageMs) / 1000;
+    utimesSync(lock, when, when);
+    got.push(await withCredentialLock(dir, async () => "got it", undefined, 500, () => {}));
+  }
+
+  assert.deepEqual(got, ["got it", "got it"]);
+});
+
+test("access denied tells a signed-in user to contact support, and a key user what it told them before", () => {
+  const error = new V3ApiError("/v3/person", 403, { description: "Forbidden" }, 0, "req-403");
+
+  const messages = ["the stored sign-in", "ENRICHLAYER_API_KEY"].map((keySource) => describeFailure(error, { keySource, hasMaxAgeSeconds: false }).message);
+
+  assert.deepEqual(messages, [
+    "Access denied for /v3/person: Forbidden. The signed-in account cannot use this endpoint; contact support@enrichlayer.com. (credits charged: 0, request id: req-403)",
+    "Access denied for /v3/person: Forbidden. This key or its account cannot use this endpoint; use a key that can, or contact support@enrichlayer.com. (credits charged: 0, request id: req-403)",
+  ]);
+});
+
+test("auth status says when the access token expired and that the next call renews it", async (t) => {
+  const issuer = await startIssuer(t);
+  const local = tempStore(t);
+  const tokens = issuer.tokens(-60_000);
+  await local.store.write(tokens);
+  const { deps: d, printed } = deps(issuer, local);
+
+  await signInStatus(d);
+
+  assert.deepEqual(printed, [
+    `Sign-in: account account-123, client enrichlayer-cli, grant grant-1, access token expired at ${new Date(tokens.expiresAt).toISOString()}, renewed on the next call (in use)`,
+  ]);
+});
+
+test("the browser login gives up when its time runs out", async (t) => {
+  const issuer = await startIssuer(t);
+
+  await assert.rejects(browserLogin(issuer.config(), { open: async () => {}, onUrl: () => {}, timeoutMs: 50 }), {
+    name: "OAuthError",
+    message: "The browser sign-in was not completed within 10 minutes. To use a link and a code instead, run: enrichlayer-v3 auth login --no-browser",
+  });
+});
+
+test("device polling stops when the code expires or after ten minutes, and then names the last failure to reach the server", async (t) => {
+  const results = [];
+  for (const [expiresIn, poll] of [
+    [60, "authorization_pending"],
+    [900, "authorization_pending"],
+    [30, "drop"],
+  ]) {
+    const issuer = await startIssuer(t);
+    issuer.state.deviceExpiresIn = expiresIn;
+    issuer.state.deviceErrors = Array(200).fill(poll);
+    let clock = 0;
+
+    const error = await deviceLogin(issuer.config(), {
+      onCode: () => {},
+      now: () => clock,
+      wait: async (ms) => {
+        clock += ms;
+      },
+    }).catch((failure) => failure);
+
+    results.push({ got: [clock, error.message], url: issuer.url });
+  }
+
+  const notApproved = "The code was not approved within 10 minutes. Run enrichlayer-v3 auth login again.";
+  assert.deepEqual(
+    results.map(({ got }) => got),
+    [
+      [60_000, notApproved],
+      [600_000, notApproved],
+      [30_000, `Could not reach the sign-in server ${results[2].url}. Try again in a few minutes.`],
+    ],
+  );
+});
+
+test("auth login writes the sign-in only after another process has released the lock", async (t) => {
+  const issuer = await startIssuer(t);
+  const local = tempStore(t);
+  const held = withCredentialLock(local.dir, async () => {
+    await sleep(300);
+    await local.store.write({ ...issuer.tokens(), refreshToken: "held-pair" });
+  });
+  const { deps: d } = deps(issuer, local, { device: (config, options) => deviceLogin(config, { ...options, wait: async () => {} }) });
+
+  await login(true, d);
+  await held;
+
+  assert.equal((await local.store.read()).refreshToken, "refresh-0");
+});
+
+test("the device code from the sign-in server is shown without control characters", async (t) => {
+  const issuer = await startIssuer(t);
+  issuer.state.userCode = "\u001b[31mABCD\n-EFGH\u0007";
+  const shown = [];
+
+  await deviceLogin(issuer.config(), { onCode: (code) => shown.push(code.userCode), wait: async () => {} });
+
+  assert.deepEqual(shown, ["[31mABCD-EFGH"]);
+});
+
+test("after a refresh that did not complete, the same process does not present the refresh token again", async (t) => {
+  const issuer = await startIssuer(t);
+  issuer.state.refreshFailure = "drop";
+  const local = tempStore(t);
+  await local.store.write(issuer.tokens(1_000));
+  const credentials = signIn(issuer, local);
+
+  const first = await credentials.authorization().catch((error) => error);
+  issuer.state.refreshFailure = undefined;
+  const second = await credentials.authorization().catch((error) => error);
+
+  assert.deepEqual(
+    [first.name, second.message, issuer.state.refreshCount],
+    ["SignInUnavailableError", "An earlier refresh of the sign-in did not complete. Run enrichlayer-v3 auth login.", 1],
+  );
+});
+
+test("writing the sign-in replaces a file others can read and a link with a new private file, and leaves the link's target alone", async (t) => {
+  const issuer = await startIssuer(t);
+  const local = tempStore(t);
+  writeFileSync(local.store.file, "{}");
+  chmodSync(local.store.file, 0o644);
+  await local.store.write(issuer.tokens());
+  const mode = statSync(local.store.file).mode & 0o777;
+  const target = join(local.dir, "target.json");
+  writeFileSync(target, "keep");
+  rmSync(local.store.file);
+  symlinkSync(target, local.store.file);
+
+  await local.store.write(issuer.tokens());
+
+  assert.deepEqual([mode, lstatSync(local.store.file).isFile(), readFileSync(target, "utf8")], [0o600, true, "keep"]);
 });

@@ -1,5 +1,5 @@
 import { DASHBOARD_URL, InvalidApiKeyError, KeyFileError, type KeySource, MissingApiKeyError, SIGN_IN_SOURCE } from "./auth/api-key.js";
-import { OAuthError } from "./auth/oauth.js";
+import { OAuthError, SignInUnavailableError } from "./auth/oauth.js";
 import { NotSignedInError } from "./auth/sign-in.js";
 import { V3ApiError, V3InterruptedError, V3NetworkError, V3TimeoutError } from "./client.js";
 
@@ -60,6 +60,11 @@ function apiFailure(error: V3ApiError, keySource: KeySource): Failure {
         message: `Not enough credits: ${reason}. Top up the account at ${DASHBOARD_URL}, then run again.`,
         exitCode: EXIT_CODES.key,
       };
+    if (keySource === SIGN_IN_SOURCE)
+      return {
+        message: `Access denied for ${error.path}: ${reason}. The signed-in account cannot use this endpoint; contact ${SUPPORT_EMAIL}.`,
+        exitCode: EXIT_CODES.key,
+      };
     return {
       message: `Access denied for ${error.path}: ${reason}. This key or its account cannot use this endpoint; use a key that can, or contact ${SUPPORT_EMAIL}.`,
       exitCode: EXIT_CODES.key,
@@ -107,6 +112,7 @@ export function describeFailure(error: unknown, { keySource, hasMaxAgeSeconds }:
       message: `${error.message}. Check the network connection and ENRICHLAYER_API_BASE_URL, then run again.`,
       exitCode: EXIT_CODES.notNow,
     };
+  if (error instanceof SignInUnavailableError) return { message: error.message, exitCode: EXIT_CODES.notNow };
   if (error instanceof MissingApiKeyError || error instanceof InvalidApiKeyError || error instanceof KeyFileError || error instanceof NotSignedInError || error instanceof OAuthError)
     return { message: error.message, exitCode: EXIT_CODES.key };
   return { message: error instanceof Error ? error.message : String(error), exitCode: EXIT_CODES.unexpected };
