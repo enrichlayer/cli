@@ -38,19 +38,19 @@ test("each client with its own command is asked to add the hosted server", async
       client: "claude-code",
       program: "claude",
       args: ["mcp", "add", "--scope", "user", "--transport", "http", "enrichlayer-v3", URL],
-      lines: `Added enrichlayer-v3 (${URL}) to Claude Code.\nTo sign in, run /mcp in Claude Code or claude mcp login enrichlayer-v3.\n`,
+      lines: `Added enrichlayer-v3 (${URL}) to Claude Code.\nTo sign in, run /mcp in Claude Code or claude mcp login enrichlayer-v3.\nIn a folder where you added the local enrichlayer-v3 server, Claude Code keeps using it: run claude mcp remove enrichlayer-v3 --scope local in that folder.\n`,
     },
     {
       client: "codex",
       program: "codex",
       args: ["mcp", "add", "enrichlayer-v3", "--url", URL],
-      lines: `Added enrichlayer-v3 (${URL}) to Codex.\nTo sign in, run codex mcp login enrichlayer-v3. Codex stops a tool call after 60 seconds by default; for live lookups set tool_timeout_sec = 310 under [mcp_servers.enrichlayer-v3] in ~/.codex/config.toml.\n`,
+      lines: `Added enrichlayer-v3 (${URL}) to Codex.\nTo sign in, run codex mcp login enrichlayer-v3. Codex stops a tool call after 60 seconds by default; for live lookups set tool_timeout_sec = 310 under [mcp_servers.enrichlayer-v3] in ~/.codex/config.toml.\nCodex replaces an enrichlayer-v3 entry that was already in ~/.codex/config.toml, such as the local server.\n`,
     },
     {
       client: "vscode",
       program: "code",
       args: ["--add-mcp", VSCODE_JSON],
-      lines: `Added enrichlayer-v3 (${URL}) to VS Code.\nVS Code opens the Enrich Layer sign-in page when the server first starts.\n`,
+      lines: `Added enrichlayer-v3 (${URL}) to VS Code.\nVS Code opens the Enrich Layer sign-in page when the server first starts.\nVS Code replaces an enrichlayer-v3 entry that was already in your user profile, such as the local server; one in a workspace's .vscode/mcp.json stays, so delete it there.\n`,
     },
   ];
 
@@ -74,23 +74,37 @@ test("a client command that is not installed stops with the command to run by ha
   assert.deepEqual(result, {
     code: 1,
     stdout: "",
-    stderr: `error: The code command of VS Code was not found. Install VS Code, or run this where it is installed: code --add-mcp '${VSCODE_JSON}'\n`,
+    stderr: `error: The code command of VS Code was not found. Install VS Code or, if it is installed, add code to PATH (on macOS, run "Shell Command: Install 'code' command in PATH" from the Command Palette), or run this where it is installed: code --add-mcp '${VSCODE_JSON}'\n`,
     homeEntries: [],
   });
   assert.deepEqual(calls(), []);
 });
 
-test("a client that refuses to add the server ends the command with 1", async (t) => {
-  const { env } = fakeClients(t, ["claude"], { exitCode: 3 });
+test("a client that refuses to add the server ends the command with 1 and says what to check", async (t) => {
+  const cases = [
+    {
+      client: "claude-code",
+      program: "claude",
+      exitCode: 3,
+      stderr: `error: Claude Code did not add the server: claude exited with 3. If your user settings already have the local enrichlayer-v3 server, remove it with claude mcp remove enrichlayer-v3 --scope user and run this again. The command was: claude mcp add --scope user --transport http enrichlayer-v3 ${URL}\n`,
+    },
+    {
+      client: "codex",
+      program: "codex",
+      exitCode: 2,
+      stderr: `error: Codex did not add the server: codex exited with 2. If Codex does not know mcp add, update Codex: older versions do not have it. The command was: codex mcp add enrichlayer-v3 --url ${URL}\n`,
+    },
+  ];
 
-  const result = await runCli(["mcp", "install", "claude-code"], { env });
+  for (const { client, program, exitCode, stderr } of cases) {
+    await t.test(client, async (t) => {
+      const { env } = fakeClients(t, [program], { exitCode });
 
-  assert.deepEqual(result, {
-    code: 1,
-    stdout: "claude ran\n",
-    stderr: `error: Claude Code did not add the server: claude exited with 3. The command was: claude mcp add --scope user --transport http enrichlayer-v3 ${URL}\n`,
-    homeEntries: [],
-  });
+      const result = await runCli(["mcp", "install", client], { env });
+
+      assert.deepEqual(result, { code: 1, stdout: `${program} ran\n`, stderr, homeEntries: [] });
+    });
+  }
 });
 
 test("--dry-run prints the client command and does not run it", async (t) => {
@@ -182,7 +196,7 @@ test("a different enrichlayer-v3 entry is kept unless --force is given", async (
   assert.deepEqual(refused, {
     code: 1,
     stdout: "",
-    stderr: `error: ${file} already has a different enrichlayer-v3 entry. Run again with --force to replace it with ${ENTRY}\n`,
+    stderr: `error: ${file} already has a different enrichlayer-v3 entry, such as the local server. Run again with --force to replace it with ${ENTRY}\n`,
     homeEntries: [".cursor"],
   });
   assert.equal(readFileSync(file, "utf8"), content);
