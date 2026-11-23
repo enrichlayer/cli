@@ -1,6 +1,6 @@
 {
   "name": "@enrichlayer/cli-v3",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command-line client for the Enrich Layer v3 API — person and company profiles, company search and logos, work email search and email validation",
   "type": "module",
   "bin": {
