@@ -133,7 +133,14 @@ enrichlayer-v3 mcp install claude-code --dry-run
 
 `--dry-run` prints the command that would be run, or the file and the entry that would be written, and changes nothing.
 
-For Claude Code, Codex and VS Code the client's own command must be installed; what that command prints is shown as it is. When the command is missing or the client refuses, for example because the name is taken, the CLI exits with 1 and prints the command to run by hand.
+For Claude Code, Codex and VS Code the client's own command must be installed; what that command prints is shown as it is. When the command is missing or the client refuses, the CLI exits with 1 and prints the command to run by hand. On macOS, put VS Code's `code` command on the PATH with the Command Palette item "Shell Command: Install 'code' command in PATH".
+
+The local server from the MCP server's README has the same name, `enrichlayer-v3`, and each client keeps one of the two. If you set up the local server before:
+
+- **Claude Code** adds the hosted server to your user settings, but in a folder where you added the local server, the local one is still used. Remove it there with `claude mcp remove enrichlayer-v3 --scope local`. If the local server is in your user settings, Claude Code refuses to add the hosted one: remove it with `claude mcp remove enrichlayer-v3 --scope user` and run the command again.
+- **Codex** replaces an `enrichlayer-v3` entry in `~/.codex/config.toml` without asking, the local server included.
+- **VS Code** replaces an `enrichlayer-v3` entry in your user profile without asking, the local server included. One in a workspace's `.vscode/mcp.json` stays: delete it there.
+- **Cursor**: `--force` replaces the local server's entry in `~/.cursor/mcp.json`. One in a project's `.cursor/mcp.json` stays: delete it there.
 
 Cursor's file is changed only when that is safe: the other servers and settings, the indent and the file mode stay as they were, and the file is replaced in one step. The CLI exits with 1 and leaves the file as it is when the folder `~/.cursor` does not exist, when the file is not plain JSON (comments included), or when it already has a different `enrichlayer-v3` entry; `--force` replaces that entry. A second run finds the entry and writes nothing.
 

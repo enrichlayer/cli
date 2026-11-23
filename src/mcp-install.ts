@@ -15,7 +15,9 @@ interface ClientCommand {
   title: string;
   program: string;
   args: string[];
-  next: string;
+  next: string[];
+  install?: string;
+  refused?: string;
 }
 
 const CLIENT_COMMANDS: Record<Exclude<McpClient, "cursor">, ClientCommand> = {
@@ -23,24 +25,36 @@ const CLIENT_COMMANDS: Record<Exclude<McpClient, "cursor">, ClientCommand> = {
     title: "Claude Code",
     program: "claude",
     args: ["mcp", "add", "--scope", "user", "--transport", "http", MCP_SERVER_NAME, MCP_SERVER_URL],
-    next: `To sign in, run /mcp in Claude Code or claude mcp login ${MCP_SERVER_NAME}.`,
+    next: [
+      `To sign in, run /mcp in Claude Code or claude mcp login ${MCP_SERVER_NAME}.`,
+      `In a folder where you added the local ${MCP_SERVER_NAME} server, Claude Code keeps using it: run claude mcp remove ${MCP_SERVER_NAME} --scope local in that folder.`,
+    ],
+    refused: `If your user settings already have the local ${MCP_SERVER_NAME} server, remove it with claude mcp remove ${MCP_SERVER_NAME} --scope user and run this again.`,
   },
   codex: {
     title: "Codex",
     program: "codex",
     args: ["mcp", "add", MCP_SERVER_NAME, "--url", MCP_SERVER_URL],
-    next: `To sign in, run codex mcp login ${MCP_SERVER_NAME}. Codex stops a tool call after 60 seconds by default; for live lookups set tool_timeout_sec = 310 under [mcp_servers.${MCP_SERVER_NAME}] in ~/.codex/config.toml.`,
+    next: [
+      `To sign in, run codex mcp login ${MCP_SERVER_NAME}. Codex stops a tool call after 60 seconds by default; for live lookups set tool_timeout_sec = 310 under [mcp_servers.${MCP_SERVER_NAME}] in ~/.codex/config.toml.`,
+      `Codex replaces an ${MCP_SERVER_NAME} entry that was already in ~/.codex/config.toml, such as the local server.`,
+    ],
+    refused: "If Codex does not know mcp add, update Codex: older versions do not have it.",
   },
   vscode: {
     title: "VS Code",
     program: "code",
     args: ["--add-mcp", JSON.stringify({ name: MCP_SERVER_NAME, type: "http", url: MCP_SERVER_URL })],
-    next: "VS Code opens the Enrich Layer sign-in page when the server first starts.",
+    next: [
+      "VS Code opens the Enrich Layer sign-in page when the server first starts.",
+      `VS Code replaces an ${MCP_SERVER_NAME} entry that was already in your user profile, such as the local server; one in a workspace's .vscode/mcp.json stays, so delete it there.`,
+    ],
+    install: `Install VS Code or, if it is installed, add code to PATH (on macOS, run "Shell Command: Install 'code' command in PATH" from the Command Palette)`,
   },
 };
 
 export type InstallPlan =
-  | { action: "run"; title: string; program: string; args: string[]; command: string; next: string }
+  | { action: "run"; title: string; program: string; args: string[]; command: string; next: string[]; install: string; refused?: string }
   | { action: "write"; file: string; target: string; replaces: boolean; text: string; mode: number }
   | { action: "none"; file: string }
   | { action: "refuse"; message: string };
@@ -112,7 +126,7 @@ function planCursor({ home, force }: { home: string; force: boolean }): InstallP
   const replaces = Object.hasOwn(servers, MCP_SERVER_NAME);
   if (isCursorEntry(servers[MCP_SERVER_NAME])) return { action: "none", file };
   if (replaces && !force)
-    return { action: "refuse", message: `${file} already has a different ${MCP_SERVER_NAME} entry. Run again with --force to replace it with ${CURSOR_ENTRY_TEXT}` };
+    return { action: "refuse", message: `${file} already has a different ${MCP_SERVER_NAME} entry, such as the local server. Run again with --force to replace it with ${CURSOR_ENTRY_TEXT}` };
 
   const target = stats ? realpathSync(file) : file;
   if (!isWritable(dirname(target)))
@@ -126,8 +140,8 @@ function planCursor({ home, force }: { home: string; force: boolean }): InstallP
 
 export function planInstall({ client, force = false, home = homedir() }: { client: McpClient; force?: boolean; home?: string }): InstallPlan {
   if (client === "cursor") return planCursor({ home, force });
-  const { title, program, args, next } = CLIENT_COMMANDS[client];
-  return { action: "run", title, program, args, command: [program, ...args].map(quote).join(" "), next };
+  const { title, program, args, next, install = `Install ${title}`, refused } = CLIENT_COMMANDS[client];
+  return { action: "run", title, program, args, command: [program, ...args].map(quote).join(" "), next, install, refused };
 }
 
 export function describePlan(plan: Exclude<InstallPlan, { action: "refuse" }>): Record<string, unknown> {
@@ -173,10 +187,13 @@ export function applyInstall(plan: InstallPlan): InstallOutcome {
       lines: [],
       error:
         (result.error as NodeJS.ErrnoException).code === "ENOENT"
-          ? `The ${plan.program} command of ${plan.title} was not found. Install ${plan.title}, or run this where it is installed: ${plan.command}`
+          ? `The ${plan.program} command of ${plan.title} was not found. ${plan.install}, or run this where it is installed: ${plan.command}`
           : `Could not run ${plan.program}: ${result.error.message}`,
     };
   if (result.status !== 0)
-    return { lines: [], error: `${plan.title} did not add the server: ${plan.program} exited with ${result.status ?? result.signal}. The command was: ${plan.command}` };
-  return { lines: [`Added ${MCP_SERVER_NAME} (${MCP_SERVER_URL}) to ${plan.title}.`, plan.next] };
+    return {
+      lines: [],
+      error: `${plan.title} did not add the server: ${plan.program} exited with ${result.status ?? result.signal}.${plan.refused ? ` ${plan.refused}` : ""} The command was: ${plan.command}`,
+    };
+  return { lines: [`Added ${MCP_SERVER_NAME} (${MCP_SERVER_URL}) to ${plan.title}.`, ...plan.next] };
 }
