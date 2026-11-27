@@ -14,7 +14,7 @@ export interface V3Param {
 export const v3Params = {
   "/v3/person": [
     {"name":"email","required":false,"type":"string","description":"Email address."},
-    {"name":"profile","required":false,"type":"string","description":"LinkedIn username or profile URL."},
+    {"name":"profile","required":false,"type":"string","description":"Profile username (the part after /in/) or profile URL."},
     {"name":"facebook","required":false,"type":"string","description":"Facebook username or profile URL."},
     {"name":"twitter","required":false,"type":"string","description":"Twitter/X username or profile URL."},
     {"name":"github","required":false,"type":"string","description":"GitHub username or profile URL."},
@@ -28,7 +28,7 @@ export const v3Params = {
     {"name":"maxAgeSeconds","required":false,"type":"integer","minimum":0,"default":2592000,"description":"Maximum acceptable age of cached data, in seconds."},
   ],
   "/v3/company": [
-    {"name":"url","required":true,"type":"string","description":"LinkedIn company or showcase page URL to look up."},
+    {"name":"url","required":true,"type":"string","description":"Company or showcase page URL to look up."},
     {"name":"fundingData","required":false,"type":"string","enum":["exclude","include"],"default":"exclude","description":"Include the funding rounds, returned in the `funding.rounds` section, and the date and type of the last round in the `funding.summary` section."},
     {"name":"exitData","required":false,"type":"string","enum":["exclude","include"],"default":"exclude","description":"Include the exit events, returned in the `exits` section."},
     {"name":"acquisitions","required":false,"type":"string","enum":["exclude","include"],"default":"exclude","description":"Include the companies acquired and the acquirer, returned in the `acquisitions` section."},

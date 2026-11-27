@@ -22,15 +22,15 @@
   "tags": [
     {
       "name": "people",
-      "description": "Person enrichment"
+      "description": "Person enrichment."
     },
     {
       "name": "company",
-      "description": "Company enrichment and search"
+      "description": "Company enrichment and search."
     },
     {
       "name": "email",
-      "description": "Email discovery and validation"
+      "description": "Email discovery and validation."
     }
   ],
   "paths": {
@@ -38,7 +38,7 @@
       "get": {
         "operationId": "getPersonV3",
         "summary": "Person Profile Endpoint",
-        "description": "Look up a person by any identifier: an email address, or a LinkedIn, Facebook, Twitter/X, or GitHub username or profile URL. One of them is required; if several are given, only the first in this order is used: github, email, profile, facebook, twitter.",
+        "description": "Look up a person by any identifier: an email address, a profile username or URL, or a Facebook, Twitter/X, or GitHub username or profile URL. One of them is required; if several are given, only the first in this order is used: github, email, profile, facebook, twitter.",
         "tags": [
           "people"
         ],
@@ -85,7 +85,7 @@
             "name": "email",
             "in": "query",
             "required": false,
-            "description": "Email address. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used",
+            "description": "Email address. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used.",
             "example": "bill.gates@gatesfoundation.org",
             "schema": {
               "type": "string"
@@ -95,7 +95,7 @@
             "name": "profile",
             "in": "query",
             "required": false,
-            "description": "LinkedIn username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used",
+            "description": "Profile username (the part after /in/) or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used.",
             "example": "https://linkedin.com/in/williamhgates/",
             "schema": {
               "type": "string"
@@ -105,7 +105,7 @@
             "name": "facebook",
             "in": "query",
             "required": false,
-            "description": "Facebook username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used",
+            "description": "Facebook username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used.",
             "example": "https://facebook.com/billgates",
             "schema": {
               "type": "string"
@@ -115,7 +115,7 @@
             "name": "twitter",
             "in": "query",
             "required": false,
-            "description": "Twitter/X username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used",
+            "description": "Twitter/X username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used.",
             "example": "https://x.com/billgates",
             "schema": {
               "type": "string"
@@ -125,7 +125,7 @@
             "name": "github",
             "in": "query",
             "required": false,
-            "description": "GitHub username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used",
+            "description": "GitHub username or profile URL. If several identifiers are given, only the first in the order github, email, profile, facebook, twitter is used.",
             "example": "https://github.com/desaturne",
             "schema": {
               "type": "string"
@@ -135,7 +135,7 @@
             "name": "socialLink",
             "in": "query",
             "required": false,
-            "description": "Include the social profile URLs, returned in the `contactInformation.socialLinks` section, along with the corresponding usernames in the `slug` section",
+            "description": "Include the social profile URLs, returned in the `contactInformation.socialLinks` section, along with the corresponding usernames in the `slug` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -150,7 +150,7 @@
             "name": "phoneNumber",
             "in": "query",
             "required": false,
-            "description": "Include phone numbers, returned in the `contactInformation.phoneNumbers` section",
+            "description": "Include phone numbers, returned in the `contactInformation.phoneNumbers` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -165,7 +165,7 @@
             "name": "personalEmail",
             "in": "query",
             "required": false,
-            "description": "Include personal emails, returned in the `contactInformation.emails.personal` section",
+            "description": "Include personal emails, returned in the `contactInformation.emails.personal` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -180,7 +180,7 @@
             "name": "workEmail",
             "in": "query",
             "required": false,
-            "description": "Include work emails, returned in the `contactInformation.emails.work` section",
+            "description": "Include work emails, returned in the `contactInformation.emails.work` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -195,7 +195,7 @@
             "name": "careerInsight",
             "in": "query",
             "required": false,
-            "description": "Include the estimated salary, seniority, and inferred skills, returned in the `careerInsight` section",
+            "description": "Include the estimated salary, seniority, and inferred skills, returned in the `careerInsight` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -210,7 +210,7 @@
             "name": "developerProfile",
             "in": "query",
             "required": false,
-            "description": "Include the GitHub developer profile data, returned in the `developerProfile` section",
+            "description": "Include the GitHub developer profile data, returned in the `developerProfile` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -225,7 +225,7 @@
             "name": "activities",
             "in": "query",
             "required": false,
-            "description": "Include up to 100 of the most recent posts from the person page, newest first with undated posts last, returned in the `activities` section",
+            "description": "Include up to 100 of the most recent posts from the person page, newest first with undated posts last, returned in the `activities` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -334,7 +334,7 @@
                       "type": "object",
                       "properties": {
                         "linkedin": {
-                          "description": "LinkedIn username (the part after /in/), decoded, in the letter case of the source",
+                          "description": "Profile username (the part after /in/), decoded, in the letter case of the source.",
                           "anyOf": [
                             {
                               "type": "string"
@@ -713,7 +713,7 @@
                             "type": "object",
                             "properties": {
                               "startDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -724,7 +724,7 @@
                                 ]
                               },
                               "endDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1157,7 +1157,7 @@
                             "type": "object",
                             "properties": {
                               "startDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1168,7 +1168,7 @@
                                 ]
                               },
                               "endDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1314,7 +1314,7 @@
                         "type": "object",
                         "properties": {
                           "startDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -1325,7 +1325,7 @@
                             ]
                           },
                           "endDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -1486,7 +1486,7 @@
                         "type": "object",
                         "properties": {
                           "startDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -1497,7 +1497,7 @@
                             ]
                           },
                           "endDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -1636,7 +1636,7 @@
                             "type": "object",
                             "properties": {
                               "startDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1647,7 +1647,7 @@
                                 ]
                               },
                               "endDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1710,7 +1710,7 @@
                                 ]
                               },
                               "issuedDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1772,7 +1772,7 @@
                             "type": "object",
                             "properties": {
                               "startDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1783,7 +1783,7 @@
                                 ]
                               },
                               "endDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1853,7 +1853,7 @@
                                 ]
                               },
                               "date": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1912,7 +1912,7 @@
                             ]
                           },
                           "publishedDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -1972,7 +1972,7 @@
                             ]
                           },
                           "issuedDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -2041,7 +2041,7 @@
                           "type": "object",
                           "properties": {
                             "emails": {
-                              "description": "Only valid addresses are returned: consumer-provider addresses from the profile → personal, prospected addresses → work",
+                              "description": "Only valid addresses are returned: consumer-provider addresses from the profile → personal, prospected addresses → work.",
                               "type": "object",
                               "properties": {
                                 "personal": {
@@ -2063,7 +2063,7 @@
                                         ]
                                       },
                                       "validity": {
-                                        "description": "Always \"valid\" — only valid addresses are returned",
+                                        "description": "Always \"valid\" — only valid addresses are returned.",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -2074,7 +2074,7 @@
                                         ]
                                       },
                                       "validatedAt": {
-                                        "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388)",
+                                        "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388).",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -2124,7 +2124,7 @@
                                         ]
                                       },
                                       "validity": {
-                                        "description": "Always \"valid\" — only valid addresses are returned",
+                                        "description": "Always \"valid\" — only valid addresses are returned.",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -2135,7 +2135,7 @@
                                         ]
                                       },
                                       "validatedAt": {
-                                        "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388)",
+                                        "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388).",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -2199,7 +2199,7 @@
                                   "type": "object",
                                   "properties": {
                                     "linkedinUrl": {
-                                      "description": "Profile URL: https://www.linkedin.com/in/ followed by the username",
+                                      "description": "Profile URL: https://www.linkedin.com/in/ followed by the username.",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -2210,7 +2210,7 @@
                                       ]
                                     },
                                     "githubUrl": {
-                                      "description": "As the source gives it, usually without the scheme (for example github.com/janedoe)",
+                                      "description": "As the source gives it, usually without the scheme (for example github.com/janedoe).",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -2221,7 +2221,7 @@
                                       ]
                                     },
                                     "facebookUrl": {
-                                      "description": "As the source gives it, usually without the scheme (for example facebook.com/janedoe)",
+                                      "description": "As the source gives it, usually without the scheme (for example facebook.com/janedoe).",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -2232,7 +2232,7 @@
                                       ]
                                     },
                                     "twitterUrl": {
-                                      "description": "As the source gives it, usually without the scheme (for example twitter.com/janedoe)",
+                                      "description": "As the source gives it, usually without the scheme (for example twitter.com/janedoe).",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -2680,7 +2680,7 @@
                             "type": "string"
                           },
                           "publishedDate": {
-                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                            "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -3016,11 +3016,11 @@
                       "type": "object",
                       "properties": {
                         "updatedAt": {
-                          "description": "When the record behind this response was last refreshed, as an ISO 8601 date and time in UTC; a refresh that finds nothing new still moves this date forward",
+                          "description": "When the record behind this response was last refreshed, as an ISO 8601 date and time in UTC; a refresh that finds nothing new still moves this date forward.",
                           "type": "string"
                         },
                         "activityAt": {
-                          "description": "When a change to this profile was last noticed, as an ISO 8601 date and time in UTC; null if no change has been observed",
+                          "description": "When a change to this profile was last noticed, as an ISO 8601 date and time in UTC; null if no change has been observed.",
                           "anyOf": [
                             {
                               "type": "string"
@@ -3031,7 +3031,7 @@
                           ]
                         },
                         "experienceRestrictedOn": {
-                          "description": "The work history has been hidden at least since this date: the first date we recorded it as hidden, so it may have been hidden earlier. Null when the work history is visible or its visibility is unknown.",
+                          "description": "The work history has been hidden at least since this date: the first date we recorded it as hidden, not necessarily the date it was hidden. Null when the work history is visible or its visibility is unknown.",
                           "anyOf": [
                             {
                               "type": "string"
@@ -3359,7 +3359,7 @@
       "get": {
         "operationId": "getCompanyV3",
         "summary": "Company Profile Endpoint",
-        "description": "Look up a company by its LinkedIn company or showcase page URL.",
+        "description": "Look up a company by its company or showcase page URL.",
         "tags": [
           "company"
         ],
@@ -3406,7 +3406,7 @@
             "name": "url",
             "in": "query",
             "required": true,
-            "description": "LinkedIn company or showcase page URL to look up",
+            "description": "Company or showcase page URL to look up.",
             "example": "https://linkedin.com/company/microsoft/",
             "schema": {
               "type": "string"
@@ -3416,7 +3416,7 @@
             "name": "fundingData",
             "in": "query",
             "required": false,
-            "description": "Include the funding rounds, returned in the `funding.rounds` section, and the date and type of the last round in the `funding.summary` section",
+            "description": "Include the funding rounds, returned in the `funding.rounds` section, and the date and type of the last round in the `funding.summary` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -3431,7 +3431,7 @@
             "name": "exitData",
             "in": "query",
             "required": false,
-            "description": "Include the exit events, returned in the `exits` section",
+            "description": "Include the exit events, returned in the `exits` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -3446,7 +3446,7 @@
             "name": "acquisitions",
             "in": "query",
             "required": false,
-            "description": "Include the companies acquired and the acquirer, returned in the `acquisitions` section",
+            "description": "Include the companies acquired and the acquirer, returned in the `acquisitions` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -3461,7 +3461,7 @@
             "name": "extra",
             "in": "query",
             "required": false,
-            "description": "Include the extra profile details: the Crunchbase URL, rounds count, total funding and investor count in the `funding.summary` section, the ticker symbol and IPO status in the `stock` section, and the contact email and Crunchbase link in the `contactInformation` section, and the Crunchbase slug in `slug.crunchbase`",
+            "description": "Include the extra profile details: the Crunchbase URL, rounds count, total funding and investor count in the `funding.summary` section, the ticker symbol and IPO status in the `stock` section, and the contact email and Crunchbase link in the `contactInformation` section, and the Crunchbase slug in `slug.crunchbase`.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -3476,7 +3476,7 @@
             "name": "activities",
             "in": "query",
             "required": false,
-            "description": "Include up to 100 of the most recent posts from the company page, newest first with undated posts last, returned in the `activities` section",
+            "description": "Include up to 100 of the most recent posts from the company page, newest first with undated posts last, returned in the `activities` section.",
             "example": "include",
             "schema": {
               "default": "exclude",
@@ -3856,7 +3856,7 @@
                           ]
                         },
                         "state": {
-                          "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria)",
+                          "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria).",
                           "anyOf": [
                             {
                               "type": "string"
@@ -3867,7 +3867,7 @@
                           ]
                         },
                         "stateFullName": {
-                          "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region",
+                          "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region.",
                           "anyOf": [
                             {
                               "type": "string"
@@ -3945,7 +3945,7 @@
                           ]
                         },
                         "type": {
-                          "description": "\"hq\" for the headquarters; null otherwise",
+                          "description": "\"hq\" for the headquarters; null otherwise.",
                           "anyOf": [
                             {
                               "type": "string"
@@ -4017,7 +4017,7 @@
                             ]
                           },
                           "state": {
-                            "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria)",
+                            "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria).",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -4028,7 +4028,7 @@
                             ]
                           },
                           "stateFullName": {
-                            "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region",
+                            "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -4106,7 +4106,7 @@
                             ]
                           },
                           "type": {
-                            "description": "\"hq\" for the headquarters; null otherwise",
+                            "description": "\"hq\" for the headquarters; null otherwise.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -4167,7 +4167,7 @@
                       "type": "object",
                       "properties": {
                         "range": {
-                          "description": "Employee-count range [min, max]; max is null for the open-ended top range (10001+)",
+                          "description": "Employee-count range [min, max]; max is null for the open-ended top range (10001+).",
                           "type": "array",
                           "items": {
                             "anyOf": [
@@ -4357,7 +4357,7 @@
                                 ]
                               },
                               "validatedAt": {
-                                "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388)",
+                                "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388).",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -4725,7 +4725,7 @@
                             }
                           },
                           "location": {
-                            "description": "Only rawLocationString is filled, with the location text as LinkedIn shows it; the other fields are null",
+                            "description": "Only rawLocationString is filled, with the location text as the source shows it; the other fields are null.",
                             "type": "object",
                             "properties": {
                               "country": {
@@ -4769,7 +4769,7 @@
                                 ]
                               },
                               "state": {
-                                "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria)",
+                                "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria).",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -4780,7 +4780,7 @@
                                 ]
                               },
                               "stateFullName": {
-                                "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region",
+                                "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -4858,7 +4858,7 @@
                                 ]
                               },
                               "type": {
-                                "description": "\"hq\" for the headquarters; null otherwise",
+                                "description": "\"hq\" for the headquarters; null otherwise.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -4996,7 +4996,7 @@
                             }
                           },
                           "location": {
-                            "description": "Only rawLocationString is filled, with the location text as LinkedIn shows it; the other fields are null",
+                            "description": "Only rawLocationString is filled, with the location text as the source shows it; the other fields are null.",
                             "type": "object",
                             "properties": {
                               "country": {
@@ -5040,7 +5040,7 @@
                                 ]
                               },
                               "state": {
-                                "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria)",
+                                "description": "Region as the source gives it: a code (for example CA) or a name (for example Bavaria).",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -5051,7 +5051,7 @@
                                 ]
                               },
                               "stateFullName": {
-                                "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region",
+                                "description": "Region name from the ISO 3166-2 table, in its spelling; null when the table does not know the region.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -5129,7 +5129,7 @@
                                 ]
                               },
                               "type": {
-                                "description": "\"hq\" for the headquarters; null otherwise",
+                                "description": "\"hq\" for the headquarters; null otherwise.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -5197,7 +5197,7 @@
                               ]
                             },
                             "lastRoundDate": {
-                              "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                              "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -5305,7 +5305,7 @@
                                 ]
                               },
                               "announcedDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -5570,7 +5570,7 @@
                                 "additionalProperties": false
                               },
                               "announcedDate": {
-                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -5710,7 +5710,7 @@
                                   "additionalProperties": false
                                 },
                                 "announcedDate": {
-                                  "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD",
+                                  "description": "Date as precise as the source gives it: YYYY, YYYY-MM or YYYY-MM-DD.",
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -6175,7 +6175,7 @@
             "name": "q",
             "in": "query",
             "required": true,
-            "description": "Company name or domain to search for",
+            "description": "Company name or domain to search for.",
             "example": "microsoft.com",
             "schema": {
               "type": "string",
@@ -6202,7 +6202,7 @@
                     "type": "object",
                     "properties": {
                       "companyName": {
-                        "description": "Display name of the company",
+                        "description": "Display name of the company.",
                         "anyOf": [
                           {
                             "type": "string"
@@ -6213,7 +6213,7 @@
                         ]
                       },
                       "logoUrl": {
-                        "description": "Logo image URL",
+                        "description": "Logo image URL.",
                         "anyOf": [
                           {
                             "type": "string"
@@ -6224,7 +6224,7 @@
                         ]
                       },
                       "domain": {
-                        "description": "Resolved primary domain with the original host",
+                        "description": "Resolved primary domain with the original host.",
                         "type": "object",
                         "properties": {
                           "resolved": {
@@ -6275,7 +6275,7 @@
                         ]
                       },
                       "location": {
-                        "description": "City, region and country of the company",
+                        "description": "City, region and country of the company.",
                         "anyOf": [
                           {
                             "type": "object",
@@ -6291,7 +6291,7 @@
                                 ]
                               },
                               "state": {
-                                "description": "State or region as the source gives it: usually a name (for example Washington), sometimes an abbreviation or a code",
+                                "description": "State or region as the source gives it: usually a name (for example Washington), sometimes an abbreviation or a code.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -6302,7 +6302,7 @@
                                 ]
                               },
                               "country": {
-                                "description": "Two-letter country code, for example US",
+                                "description": "Two-letter country code, for example US.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -6326,7 +6326,7 @@
                         ]
                       },
                       "linkedinUrl": {
-                        "description": "LinkedIn company profile URL",
+                        "description": "Company profile URL.",
                         "type": "string"
                       }
                     },
@@ -6512,7 +6512,7 @@
             "name": "q",
             "in": "query",
             "required": true,
-            "description": "Company name to search for",
+            "description": "Company name to search for.",
             "example": "Microsoft",
             "schema": {
               "type": "string",
@@ -6539,7 +6539,7 @@
                     "type": "object",
                     "properties": {
                       "companyName": {
-                        "description": "Display name of the company",
+                        "description": "Display name of the company.",
                         "anyOf": [
                           {
                             "type": "string"
@@ -6550,7 +6550,7 @@
                         ]
                       },
                       "logoUrl": {
-                        "description": "Logo image URL",
+                        "description": "Logo image URL.",
                         "anyOf": [
                           {
                             "type": "string"
@@ -6561,7 +6561,7 @@
                         ]
                       },
                       "domain": {
-                        "description": "Resolved primary domain with the original host",
+                        "description": "Resolved primary domain with the original host.",
                         "type": "object",
                         "properties": {
                           "resolved": {
@@ -6612,7 +6612,7 @@
                         ]
                       },
                       "location": {
-                        "description": "City, region and country of the company",
+                        "description": "City, region and country of the company.",
                         "anyOf": [
                           {
                             "type": "object",
@@ -6628,7 +6628,7 @@
                                 ]
                               },
                               "state": {
-                                "description": "State or region as the source gives it: usually a name (for example Washington), sometimes an abbreviation or a code",
+                                "description": "State or region as the source gives it: usually a name (for example Washington), sometimes an abbreviation or a code.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -6639,7 +6639,7 @@
                                 ]
                               },
                               "country": {
-                                "description": "Two-letter country code, for example US",
+                                "description": "Two-letter country code, for example US.",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -6663,7 +6663,7 @@
                         ]
                       },
                       "linkedinUrl": {
-                        "description": "LinkedIn company profile URL",
+                        "description": "Company profile URL.",
                         "type": "string"
                       }
                     },
@@ -6887,7 +6887,7 @@
             "name": "full_name",
             "in": "query",
             "required": false,
-            "description": "Full name of the person",
+            "description": "Full name of the person.",
             "example": "Satya Nadella",
             "schema": {
               "type": "string"
@@ -6897,7 +6897,7 @@
             "name": "first_name",
             "in": "query",
             "required": false,
-            "description": "First name of the person",
+            "description": "First name of the person.",
             "example": "Satya",
             "schema": {
               "type": "string"
@@ -6907,7 +6907,7 @@
             "name": "last_name",
             "in": "query",
             "required": false,
-            "description": "Last name of the person",
+            "description": "Last name of the person.",
             "example": "Nadella",
             "schema": {
               "type": "string"
@@ -6917,7 +6917,7 @@
             "name": "domain",
             "in": "query",
             "required": false,
-            "description": "Company domain to scope the lookup",
+            "description": "Company domain to scope the lookup.",
             "example": "microsoft.com",
             "schema": {
               "type": "string"
@@ -6927,7 +6927,7 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "description": "Maximum number of email candidates to return",
+            "description": "Maximum number of email candidates to return.",
             "example": 5,
             "schema": {
               "type": "integer",
@@ -6953,7 +6953,7 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "description": "Resolved person name",
+                      "description": "Resolved person name.",
                       "anyOf": [
                         {
                           "type": "string"
@@ -6969,7 +6969,7 @@
                         "type": "object",
                         "properties": {
                           "email": {
-                            "description": "Candidate email address",
+                            "description": "Candidate email address.",
                             "type": "string"
                           },
                           "normalized": {
@@ -6983,7 +6983,7 @@
                             ]
                           },
                           "validity": {
-                            "description": "Validation verdict for this candidate. Known values: valid, invalid, catchall, malformed (open set — the upstream provider may introduce new verdicts)",
+                            "description": "Validation verdict for this candidate. Known values: valid, invalid, catchall, malformed (open set — the upstream provider may introduce new verdicts).",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -6994,7 +6994,7 @@
                             ]
                           },
                           "validatedAt": {
-                            "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388)",
+                            "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388).",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -7005,7 +7005,7 @@
                             ]
                           },
                           "gateway": {
-                            "description": "Receiving mail gateway, when identified",
+                            "description": "Receiving mail gateway, when identified.",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -7289,7 +7289,7 @@
             "name": "email",
             "in": "query",
             "required": true,
-            "description": "Email address to validate",
+            "description": "Email address to validate.",
             "example": "satya@microsoft.com",
             "schema": {
               "type": "string",
@@ -7314,11 +7314,11 @@
                   "type": "object",
                   "properties": {
                     "email": {
-                      "description": "The address that was validated",
+                      "description": "The address that was validated.",
                       "type": "string"
                     },
                     "emailStatus": {
-                      "description": "Validation verdict. Known values: valid, invalid, catchall, malformed (open set — the upstream provider may introduce new verdicts)",
+                      "description": "Validation verdict. Known values: valid, invalid, catchall, malformed (open set — the upstream provider may introduce new verdicts).",
                       "anyOf": [
                         {
                           "type": "string"
@@ -7329,7 +7329,7 @@
                       ]
                     },
                     "validatedAt": {
-                      "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388)",
+                      "description": "Date and time of the last validation in UTC, without a zone designator (for example 2026-11-02T04:25:05.509388).",
                       "anyOf": [
                         {
                           "type": "string"
@@ -7395,7 +7395,7 @@
                     "company": {
                       "anyOf": [
                         {
-                          "description": "Company enrichment derived from the email domain, when resolvable",
+                          "description": "Company enrichment derived from the email domain, when resolvable.",
                           "type": "object",
                           "properties": {
                             "name": {
@@ -7419,7 +7419,7 @@
                               ]
                             },
                             "size": {
-                              "description": "Employee-count range [min, max]",
+                              "description": "Employee-count range [min, max].",
                               "anyOf": [
                                 {
                                   "type": "array",
@@ -7516,7 +7516,7 @@
                               "additionalProperties": false
                             },
                             "slug": {
-                              "description": "LinkedIn universal name id",
+                              "description": "Universal name id of the company profile.",
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -7527,7 +7527,7 @@
                               ]
                             },
                             "id": {
-                              "description": "LinkedIn internal company id",
+                              "description": "Internal id of the company profile.",
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -7785,25 +7785,25 @@
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Enrich Layer API key, sent as `Authorization: Bearer <key>`"
+        "description": "Enrich Layer API key, sent as `Authorization: Bearer <key>`."
       }
     },
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Error returned for 4xx/5xx responses",
+        "description": "Error returned for 4xx/5xx responses.",
         "properties": {
           "code": {
             "type": "integer",
-            "description": "HTTP status code"
+            "description": "HTTP status code."
           },
           "name": {
             "type": "string",
-            "description": "HTTP status reason phrase, e.g. \"Unauthorized\""
+            "description": "HTTP status reason phrase, e.g. \"Unauthorized\"."
           },
           "description": {
             "type": "string",
-            "description": "Human-readable detail"
+            "description": "Human-readable detail."
           }
         },
         "required": [
@@ -7814,23 +7814,23 @@
       },
       "FreshnessConflictError": {
         "type": "object",
-        "description": "Error returned for 409 responses",
+        "description": "Error returned for 409 responses.",
         "properties": {
           "code": {
             "type": "integer",
-            "description": "HTTP status code"
+            "description": "HTTP status code."
           },
           "name": {
             "type": "string",
-            "description": "HTTP status reason phrase, e.g. \"Conflict\""
+            "description": "HTTP status reason phrase, e.g. \"Conflict\"."
           },
           "description": {
             "type": "string",
-            "description": "Human-readable detail"
+            "description": "Human-readable detail."
           },
           "cachedProfileAgeSeconds": {
             "type": "integer",
-            "description": "Age of the freshest cached profile available, in seconds"
+            "description": "Age of the freshest cached profile available, in seconds."
           }
         },
         "required": [
@@ -7843,13 +7843,13 @@
     },
     "headers": {
       "X-Request-Id": {
-        "description": "Identifier of this request. Include it when reporting issues",
+        "description": "Identifier of this request. Include it when reporting issues.",
         "schema": {
           "type": "string"
         }
       },
       "X-EnrichLayer-Credit-Cost": {
-        "description": "Total credits charged for this API call",
+        "description": "Total credits charged for this API call.",
         "schema": {
           "type": "integer"
         }
